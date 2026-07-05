@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v3.5
+#  红石镇客户端更新器 v3.6
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.5"
+$Script:UpdaterVersion = "3.6"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -557,26 +557,29 @@ function Invoke-UpdaterUpdate {
     Write-Success "下载完成!"
     Write-Host ""
 
+    # 在 PowerShell 中完成文件替换 (避免 bat 编码问题)
+    $newPs1Path = Join-Path $tempDir "update_modpack.ps1"
+    $newBatPath = Join-Path $tempDir "update_modpack.bat"
+    $destPs1 = Join-Path $scriptDir "update_modpack.ps1"
+    $destBat = Join-Path $scriptDir "update_modpack.bat"
+
+    try {
+        Copy-Item -LiteralPath $newPs1Path -Destination $destPs1 -Force -ErrorAction Stop
+        Copy-Item -LiteralPath $newBatPath -Destination $destBat -Force -ErrorAction Stop
+        Write-Success "文件替换完成"
+    } catch {
+        Write-Box -Lines @("替换失败! 请手动复制:", "$newPs1Path", "→ $scriptDir\") -Color Red
+        if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
+        try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
+        return
+    }
+
+    # 写清理脚本 (无中文路径, 纯清理 + 提示)
     $updateBat = Join-Path $tempDir "_apply.bat"
     $batContent = @"
 @echo off
-ping 127.0.0.1 -n 4 >nul
-copy /Y "$tempDir\update_modpack.ps1" "$scriptDir\update_modpack.ps1" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 替换失败，请手动将以下文件复制到目标目录:
-    echo   $tempDir\update_modpack.ps1
-    echo   → $scriptDir\
-    pause
-    exit /b 1
-)
-copy /Y "$tempDir\update_modpack.bat" "$scriptDir\update_modpack.bat" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 替换失败，请手动将以下文件复制到目标目录:
-    echo   $tempDir\update_modpack.bat
-    echo   → $scriptDir\
-    pause
-    exit /b 1
-)
+chcp 65001 >nul 2>&1
+ping 127.0.0.1 -n 2 >nul
 cd /d "%TEMP%"
 rmdir /S /Q "$tempDir" >nul 2>&1
 echo.
@@ -586,10 +589,10 @@ echo ==========================================
 echo.
 pause
 "@
-    Set-Content -LiteralPath $updateBat -Value $batContent -Encoding ASCII
+    Set-Content -LiteralPath $updateBat -Value $batContent -Encoding UTF8
 
-    Write-Box -Lines @("更新文件已就绪!", "关闭此窗口后将自动替换文件", "请重新运行 update_modpack.bat") -Color Green
-    if ($Script:IsInteractive) { Write-Host "`n  按任意键开始更新..."; [Console]::ReadKey($true) | Out-Null }
+    Write-Box -Lines @("更新完成!", "请重新运行 update_modpack.bat", "此窗口将自动清理临时文件") -Color Green
+    if ($Script:IsInteractive) { Write-Host "`n  按任意键退出当前程序..."; [Console]::ReadKey($true) | Out-Null }
 
     Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $updateBat) -WindowStyle Normal
     Start-Sleep -Milliseconds 500
