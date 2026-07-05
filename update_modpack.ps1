@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v3.8
+#  红石镇客户端更新器 v3.9
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.8"
+$Script:UpdaterVersion = "3.9"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -576,6 +576,12 @@ function Invoke-UpdaterUpdate {
 
     # 清理临时目录
     try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
+
+    # 弹独立窗口显示完成 (纯 ASCII 无编码问题)
+    $msgBat = Join-Path ([System.IO.Path]::GetTempPath()) "_update_done.bat"
+    "echo.`necho ==========================================`necho   Update complete!`necho   Restart update_modpack.bat`necho ==========================================`necho.`npause" |
+        Set-Content -LiteralPath $msgBat -Encoding ASCII
+    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $msgBat) -WindowStyle Normal
 
     Write-Host ""
     Write-Host ("  " + [string]::new('=', 52)) -ForegroundColor Green
