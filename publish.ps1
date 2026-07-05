@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GIT_SSL_NO_VERIFY = "true"
 $root = Split-Path -Parent $PSCommandPath
 $ps1File = Join-Path $root "update_modpack.ps1"
 
