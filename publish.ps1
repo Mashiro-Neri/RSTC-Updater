@@ -19,7 +19,7 @@ param(
 $ErrorActionPreference = "Stop"
 $env:GIT_SSL_NO_VERIFY = "true"
 $root = Split-Path -Parent $PSCommandPath
-$ps1File = Join-Path $root "update_modpack.ps1"
+$ps1File = Join-Path $root "updater\update_modpack.ps1"
 
 $localVer = ""
 $content = Get-Content -LiteralPath $ps1File -Raw -Encoding UTF8
@@ -125,7 +125,7 @@ if ($errors.Count -gt 0) {
     Write-Host " 检测到语法错误!" -ForegroundColor Red
     $errors | ForEach-Object { Write-Host "  - $($_.Message)" -ForegroundColor Red }
     Write-Host "  已回滚版本号，请修改语法错误后重试" -ForegroundColor Yellow
-    git checkout -- "update_modpack.ps1" 2>&1 | Out-Null
+    git checkout -- "updater/update_modpack.ps1" 2>&1 | Out-Null
     exit 1
 }
 Write-Host "OK" -ForegroundColor Green
@@ -135,7 +135,7 @@ $tag = "v$newVer"
 $commitMsg = if ($Message) { "${tag}: $Message" } else { "Release $tag" }
 
 Write-Host "  提交: $commitMsg" -ForegroundColor Cyan
-git add "update_modpack.ps1" 2>&1 | Out-Null
+git add "updater/update_modpack.ps1" 2>&1 | Out-Null
 git commit -m $commitMsg 2>&1 | Out-Null
 git tag $tag 2>&1 | Out-Null
 
@@ -143,15 +143,23 @@ Write-Host "  推送中..." -ForegroundColor Cyan
 git push origin HEAD 2>&1
 git push origin $tag 2>&1
 
-# ==================== 8. 完成 ====================
+# ==================== 8. 创建 Release ====================
+Write-Host "  创建 Release..." -ForegroundColor Cyan
+$releaseNotes = if ($Message) { $Message } else { "Release $tag" }
+gh release create $tag `
+    --repo Mashiro-Neri/RSTC-Updater `
+    --title "RSTC Updater $tag" `
+    --notes "$releaseNotes" `
+    updater/update_modpack.ps1 updater/update_modpack.bat 2>&1
+
+# ==================== 9. 完成 ====================
 Write-Host ""
 Write-Host "  ==========================================" -ForegroundColor Green
 Write-Host "   发布成功! $tag" -ForegroundColor Green
 Write-Host "  ==========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Release 地址: https://github.com/Mashiro-Neri/RSTC-Updater/releases/tag/$tag" -ForegroundColor Gray
-Write-Host "  Actions 构建: https://github.com/Mashiro-Neri/RSTC-Updater/actions" -ForegroundColor Gray
+Write-Host "  Release: https://github.com/Mashiro-Neri/RSTC-Updater/releases/tag/$tag" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  等待 Actions 完成后，用户在启动器菜单选择" -ForegroundColor Yellow
+Write-Host "  用户在启动器菜单选择" -ForegroundColor Yellow
 Write-Host "  "更新启动器" 即可自动更新。" -ForegroundColor Yellow
 Write-Host ""
