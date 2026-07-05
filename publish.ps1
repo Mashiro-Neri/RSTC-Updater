@@ -107,7 +107,7 @@ if ($confirm -and $confirm -notmatch '^(y|Y|yes|YES)$') {
 }
 
 # ==================== 5. 替换版本号 ====================
-$newAssign = $dollar + ('Script:UpdaterVersion = "' + $newVer + '"')
+$newAssign = '$' + ('Script:UpdaterVersion = "' + $newVer + '"')
 $findPattern = $dollar + 'Script:UpdaterVersion\s*=\s*"[^"]*"'
 $ps1Content = $ps1Content -replace $findPattern, $newAssign
 $headerMatch = [regex]::Match($ps1Content, '(红石镇客户端更新器\s+)v[\d.]+')

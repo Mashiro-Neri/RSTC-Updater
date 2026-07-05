@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v4.4
+#  红石镇客户端更新器 v4.3
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-\\\$Script:UpdaterVersion = "4.4"
+$Script:UpdaterVersion = "4.3"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
