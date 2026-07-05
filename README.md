@@ -10,7 +10,7 @@
 
 ## 使用
 
-1. 将两个文件放入 Minecraft 版本文件夹（通常路径类似 `.minecraft\versions\你的版本\`）
+1. 将两个文件放入版本文件夹内（一般在 `.minecraft\versions\红石镇客户端\`），放在里面可以自动获取路径
 2. 双击 `update_modpack.bat`
 3. 按菜单操作：
 
@@ -19,8 +19,6 @@
 | 检查整合包更新 | 比对本机版本与 GitHub 最新 Release，自动下载并同步 mods / config / resourcepacks 等 |
 | 没有整合包（首次下载） | 下载整合包 ZIP 到桌面，手动拖入启动器安装 |
 | 更新启动器 | 检查并更新 `update_modpack.ps1` / `update_modpack.bat` 自身 |
-
-> 将文件放在版本文件夹里可以自动获取路径，无需手动输入 MC 根目录。
 
 ## 命令行
 
