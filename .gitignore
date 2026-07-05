@@ -1,0 +1,19 @@
+# OS
+Thumbs.db
+Desktop.ini
+
+# PowerShell
+*.ps1xml
+*.psm1
+
+# Temp
+*_tmp/
+*.tmp
+*.log
+
+# Backup dirs (from script runtime)
+_modpack_backup/
+
+# Version files (user-generated)
+RSTC_version.txt
+update_log_*.txt

@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 语法检查
+        run: |
+          pwsh -NoProfile -Command '
+          $errs = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile("update_modpack.ps1", [ref]$null, [ref]$errs)
+          if ($errs.Count -gt 0) {
+            foreach ($e in $errs) { Write-Host "ERROR: $($e.Message)" }
+            exit 1
+          }
+          Write-Host "语法检查通过"
+          '
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "RSTC Updater ${{ github.ref_name }}"
+          files: |
+            update_modpack.ps1
+            update_modpack.bat
+          generate_release_notes: true
