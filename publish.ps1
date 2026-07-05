@@ -22,9 +22,10 @@ $ps1File = Join-Path $root "update_modpack.ps1"
 Push-Location -LiteralPath $root
 try {
     $gitStatus = git status --porcelain 2>&1
-    if ($gitStatus -match '\S') {
+    $dirty = $gitStatus | Where-Object { $_ -notlike '?? *' }
+    if ($dirty) {
         Write-Host "ERROR: 工作区不干净，请先提交或暂存所有更改:" -ForegroundColor Red
-        Write-Host $gitStatus
+        Write-Host ($dirty -join "`n")
         exit 1
     }
 } finally { Pop-Location }

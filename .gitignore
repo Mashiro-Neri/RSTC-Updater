@@ -11,9 +11,5 @@ Desktop.ini
 *.tmp
 *.log
 
-# Backup dirs (from script runtime)
-_modpack_backup/
-
-# Version files (user-generated)
-RSTC_version.txt
-update_log_*.txt
+# User instruction files
+*.txt
