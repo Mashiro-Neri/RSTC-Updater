@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v4.0
+#  红石镇客户端更新器 v4.1
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "4.0"
+$Script:UpdaterVersion = "4.1"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -561,48 +561,26 @@ function Invoke-UpdaterUpdate {
     $destPs1 = Join-Path $scriptDir "update_modpack.ps1"
     $destBat = Join-Path $scriptDir "update_modpack.bat"
 
-    # 先把完成窗口的 bat 写好 (避免文件覆盖后脚本崩了弹不出来)
-    $doneBat = Join-Path ([System.IO.Path]::GetTempPath()) "_update_done.bat"
-    @"
-@echo off
-echo.
-echo ==========================================
-echo    Update complete!
-echo    Restart update_modpack.bat
-echo ==========================================
-echo.
-pause
-"@ | Set-Content -LiteralPath $doneBat -Encoding ASCII
-
     Write-Host "  正在替换文件..." -ForegroundColor Cyan
-    $replaceOk = $false
     try {
         Copy-Item -LiteralPath $newPs1Path -Destination $destPs1 -Force -ErrorAction Stop
         Copy-Item -LiteralPath $newBatPath -Destination $destBat -Force -ErrorAction Stop
-        $replaceOk = $true
-    } catch {}
-
-    # 清理临时目录
-    try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
-
-    if (-not $replaceOk) {
-        Set-Content -LiteralPath $doneBat -Value @"
-@echo off
-echo.
-echo ==========================================
-echo    Update FAILED!
-echo    Manual copy needed:
-echo    $newPs1Path
-echo    to
-echo    $scriptDir\
-echo ==========================================
-echo.
-pause
-"@ -Encoding ASCII
+    } catch {
+        Write-ErrorT "替换失败: $_"
+        Write-Host "  新文件位于: $tempDir" -ForegroundColor Yellow
+        if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
+        return
     }
 
-    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $doneBat) -WindowStyle Normal
-    Start-Sleep -Seconds 1
+    try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
+    Write-Success "文件替换完成"
+
+    Write-Host ""
+    Write-Host ("  " + [string]::new('=', 52)) -ForegroundColor Green
+    Write-Host "   更新完成! 请重新运行 update_modpack.bat" -ForegroundColor Green
+    Write-Host ("  " + [string]::new('=', 52)) -ForegroundColor Green
+    Write-Host ""
+    if ($Script:IsInteractive) { Write-Host "  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
     exit 0
 }
 
