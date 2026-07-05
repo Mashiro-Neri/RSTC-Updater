@@ -125,7 +125,7 @@ function Write-Banner {
         else { Write-Host ("  ║ " + $l + " ║") -ForegroundColor Red }
     }
     Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor Red
-    $title = "红石镇客户端更新器 v3.0"
+    $title = "红石镇客户端更新器 v$($Script:UpdaterVersion)"
     $tw = (($title -split '' | Where-Object { $_ -match '[^\u0000-\u00ff]' }).Count * 2) + ($title.Length - ($title -split '' | Where-Object { $_ -match '[^\u0000-\u00ff]' }).Count)
     $padL = [Math]::Max(0, [int](($inner - $tw)/2)); $padR = $inner - $tw - $padL
     Write-Host ("  ║" + (' ' * $padL) + $title + (' ' * $padR) + "║") -ForegroundColor Red
