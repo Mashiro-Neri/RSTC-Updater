@@ -1,12 +1,12 @@
-﻿# ============================================================
-#  红石镇客户端更新器 v3.3
+# ============================================================
+#  红石镇客户端更新器 v3.4
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.3"
+$Script:UpdaterVersion = "3.4"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -467,7 +467,7 @@ function Get-UpdaterRelease {
 
 function Invoke-UpdaterUpdate {
     Write-Host ""
-    Write-Step -Step 1 -Total 3 -Title "检查启动器更新"
+    Write-Step -Step 1 -Total 4 -Title "检查启动器更新"
     Write-Host "  当前版本: v$($Script:UpdaterVersion)" -ForegroundColor Gray
     Write-Host "  正在获取最新版本信息..." -ForegroundColor Cyan
 
@@ -484,7 +484,7 @@ function Invoke-UpdaterUpdate {
         return
     }
 
-    Write-Step -Step 2 -Total 3 -Title "发现新版本!"
+    Write-Step -Step 2 -Total 4 -Title "发现新版本!"
     Write-Host "  当前: v$($Script:UpdaterVersion)  →  $($updaterRelease.Tag)" -ForegroundColor Yellow
     Write-Host ""
     Write-Box -Lines @("$($updaterRelease.Name)", "版本: $($updaterRelease.Tag)") -Color Cyan
@@ -497,7 +497,41 @@ function Invoke-UpdaterUpdate {
     $confirm = Show-Menu -Title "是否更新启动器?" -Items @("是 - 立即更新", "否 - 取消") -Default 0
     if ($confirm -ne 0) { return }
 
-    Write-Step -Step 3 -Total 3 -Title "下载更新"
+    Write-Step -Step 3 -Total 4 -Title "选择下载镜像"
+    $mirrorItems = @("自动测速 - 选最快的", "手动选择 - 自己挑镜像")
+    $mc = Show-Menu -Title "请选择:" -Items $mirrorItems -Default 0 -HasBack $true
+    if ($mc -eq -1) { return }
+
+    if ($mc -eq 0) {
+        Write-Host "`n  正在测试镜像速度..." -ForegroundColor Cyan
+        $results = @()
+        foreach ($i in 0..($Script:DownloadMirrors.Length - 1)) {
+            $m = $Script:DownloadMirrors[$i]; Write-Host "    测试 $($m.Name)..." -NoNewline
+            $res = Test-MirrorSpeed -MirrorUrl $m.Url -TestUrl $updaterRelease.Ps1Url
+            $results += @{ Index = $i; Name = $m.Name; Speed = $res.Speed }
+            if ($res.Status -eq 'ok') { Write-Host "`r  ▶ $($m.Name): $(if ($res.Speed -ge 1024){"$([math]::Round($res.Speed/1024,1))MB/s"}else{"$($res.Speed)KB/s"})" -ForegroundColor Green }
+            else { Write-Host "`r  ✗ $($m.Name): $(switch($res.Status){'blocked'{'无法连接'};'timeout'{'超时'};'dns'{'DNS失败'};default{'不可用'}})" -ForegroundColor Red }
+        }
+        $best = $results | Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
+        if ($best) { Write-Host ""; Write-Success "最快: $($best.Name)"; $Script:SelectedMirror = $best.Index }
+        else { Write-Warn "全部不可用，使用默认直连" }
+    } else {
+        $items = @(); foreach ($m in $Script:DownloadMirrors) { $items += $m.Name }; $items += "自定义"
+        $idx = Show-Menu -Title "请选择:" -Items $items -Default 0 -HasBack $true
+        if ($idx -eq -1) { return }
+        if ($idx -ge 0 -and $idx -lt $Script:DownloadMirrors.Length) { $Script:SelectedMirror = $idx }
+        elseif ($idx -eq $items.Length - 1) {
+            $cu = Show-Input "请输入镜像URL" "https://gh-proxy.com/"
+            if ($cu) { $cu = $cu.Trim('/') + '/'; $Script:DownloadMirrors += @{Name="自定义 ($cu)"; Url=$cu}; $Script:SelectedMirror = $Script:DownloadMirrors.Length - 1 }
+        }
+    }
+
+    $mirror = $Script:DownloadMirrors[$Script:SelectedMirror]
+    $ps1Url = if ($mirror.Url) { $mirror.Url + $updaterRelease.Ps1Url } else { $updaterRelease.Ps1Url }
+    $batUrl = if ($mirror.Url) { $mirror.Url + $updaterRelease.BatUrl } else { $updaterRelease.BatUrl }
+
+    Write-Step -Step 4 -Total 4 -Title "下载更新"
+    Write-Host "  镜像: $($mirror.Name)" -ForegroundColor Gray
     Write-Host "  正在下载 ..." -ForegroundColor Cyan
 
     $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $PSCommandPath }
@@ -510,8 +544,8 @@ function Invoke-UpdaterUpdate {
 
     try {
         $client = [System.Net.WebClient]::new()
-        $client.DownloadFile($updaterRelease.Ps1Url, $newPs1)
-        $client.DownloadFile($updaterRelease.BatUrl, $newBat)
+        $client.DownloadFile($ps1Url, $newPs1)
+        $client.DownloadFile($batUrl, $newBat)
         $client.Dispose()
     } catch {
         Write-ErrorT "下载失败: $_"
@@ -524,14 +558,27 @@ function Invoke-UpdaterUpdate {
     Write-Host ""
 
     $updateBat = Join-Path $tempDir "_apply.bat"
-    $escapedTempDir = $tempDir
-    $escapedScriptDir = $scriptDir
     $batContent = @"
 @echo off
-timeout /t 2 /nobreak >nul
-copy /Y "$escapedTempDir\update_modpack.ps1" "$escapedScriptDir\update_modpack.ps1" >nul
-copy /Y "$escapedTempDir\update_modpack.bat" "$escapedScriptDir\update_modpack.bat" >nul
-rmdir /S /Q "$escapedTempDir" >nul 2>&1
+ping 127.0.0.1 -n 4 >nul
+copy /Y "$tempDir\update_modpack.ps1" "$scriptDir\update_modpack.ps1" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo 替换失败，请手动将以下文件复制到目标目录:
+    echo   $tempDir\update_modpack.ps1
+    echo   → $scriptDir\
+    pause
+    exit /b 1
+)
+copy /Y "$tempDir\update_modpack.bat" "$scriptDir\update_modpack.bat" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo 替换失败，请手动将以下文件复制到目标目录:
+    echo   $tempDir\update_modpack.bat
+    echo   → $scriptDir\
+    pause
+    exit /b 1
+)
+cd /d "%TEMP%"
+rmdir /S /Q "$tempDir" >nul 2>&1
 echo.
 echo ==========================================
 echo   更新完成! 请重新运行 update_modpack.bat
@@ -544,7 +591,7 @@ pause
     Write-Box -Lines @("更新文件已就绪!", "关闭此窗口后将自动替换文件", "请重新运行 update_modpack.bat") -Color Green
     if ($Script:IsInteractive) { Write-Host "`n  按任意键开始更新..."; [Console]::ReadKey($true) | Out-Null }
 
-    Start-Process -FilePath $updateBat -WindowStyle Normal
+    cmd /c start "" "cmd /c `"$updateBat`""
     exit 0
 }
 
