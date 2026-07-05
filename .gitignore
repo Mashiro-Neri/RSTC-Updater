@@ -13,3 +13,7 @@ Desktop.ini
 
 # User instruction files
 *.txt
+
+# Dev tools (local only)
+publish.bat
+publish.ps1
