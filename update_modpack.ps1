@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v3.9
+#  红石镇客户端更新器 v4.0
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.9"
+$Script:UpdaterVersion = "4.0"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -556,39 +556,53 @@ function Invoke-UpdaterUpdate {
 
     Write-Success "下载完成!"
 
-    # 在 PowerShell 中完成文件替换 (原生 Unicode, 无编码问题)
-    Write-Host "  正在替换文件..." -ForegroundColor Cyan
     $newPs1Path = Join-Path $tempDir "update_modpack.ps1"
     $newBatPath = Join-Path $tempDir "update_modpack.bat"
     $destPs1 = Join-Path $scriptDir "update_modpack.ps1"
     $destBat = Join-Path $scriptDir "update_modpack.bat"
 
+    # 先把完成窗口的 bat 写好 (避免文件覆盖后脚本崩了弹不出来)
+    $doneBat = Join-Path ([System.IO.Path]::GetTempPath()) "_update_done.bat"
+    @"
+@echo off
+echo.
+echo ==========================================
+echo    Update complete!
+echo    Restart update_modpack.bat
+echo ==========================================
+echo.
+pause
+"@ | Set-Content -LiteralPath $doneBat -Encoding ASCII
+
+    Write-Host "  正在替换文件..." -ForegroundColor Cyan
+    $replaceOk = $false
     try {
         Copy-Item -LiteralPath $newPs1Path -Destination $destPs1 -Force -ErrorAction Stop
         Copy-Item -LiteralPath $newBatPath -Destination $destBat -Force -ErrorAction Stop
-        Write-Success "文件替换完成"
-    } catch {
-        Write-Box -Lines @("替换失败! 请手动复制:", "$newPs1Path", "→ $scriptDir\") -Color Red
-        if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
-        try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
-        return
-    }
+        $replaceOk = $true
+    } catch {}
 
     # 清理临时目录
     try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
 
-    # 弹独立窗口显示完成 (纯 ASCII 无编码问题)
-    $msgBat = Join-Path ([System.IO.Path]::GetTempPath()) "_update_done.bat"
-    "echo.`necho ==========================================`necho   Update complete!`necho   Restart update_modpack.bat`necho ==========================================`necho.`npause" |
-        Set-Content -LiteralPath $msgBat -Encoding ASCII
-    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $msgBat) -WindowStyle Normal
+    if (-not $replaceOk) {
+        Set-Content -LiteralPath $doneBat -Value @"
+@echo off
+echo.
+echo ==========================================
+echo    Update FAILED!
+echo    Manual copy needed:
+echo    $newPs1Path
+echo    to
+echo    $scriptDir\
+echo ==========================================
+echo.
+pause
+"@ -Encoding ASCII
+    }
 
-    Write-Host ""
-    Write-Host ("  " + [string]::new('=', 52)) -ForegroundColor Green
-    Write-Host "   更新完成! 请重新运行 update_modpack.bat" -ForegroundColor Green
-    Write-Host ("  " + [string]::new('=', 52)) -ForegroundColor Green
-    Write-Host ""
-    if ($Script:IsInteractive) { Write-Host "  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
+    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $doneBat) -WindowStyle Normal
+    Start-Sleep -Seconds 1
     exit 0
 }
 
