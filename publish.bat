@@ -9,22 +9,26 @@ if not exist "%PS_SCRIPT%" (
     exit /b 1
 )
 
-echo RSTC Updater - Publish Tool
+REM Detect pwsh
+set "PWSH=powershell -NoProfile"
+where pwsh >nul 2>nul && set "PWSH=pwsh -NoProfile"
+
+REM Get current version
+for /f "delims=" %%i in ('%PWSH% -ExecutionPolicy Bypass -File "%PS_SCRIPT%" --current') do set "CURVER=%%i"
+
+echo  RSTC Updater - Publish Tool
+echo  Current version: v%CURVER%
 echo.
-set /p VER="Version [e.g. 4.2]: "
-set /p MSG="Message: "
+
+set /p VER="New version [Enter = auto v%CURVER% + 0.1]: "
+set /p MSG="Message   : "
 
 if "%VER%"=="" (
-    echo Version is required.
-    pause
-    exit /b 1
-)
-
-where pwsh >nul 2>nul
-if %errorlevel%==0 (
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %VER% -Message "%MSG%"
+    echo.
+    echo Auto-incrementing...
+    %PWSH% -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -Minor -Message "%MSG%"
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %VER% -Message "%MSG%"
+    %PWSH% -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %VER% -Message "%MSG%"
 )
 
 pause

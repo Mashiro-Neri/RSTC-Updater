@@ -11,13 +11,21 @@ param(
     [string]$Message,
     [switch]$Major,
     [switch]$Minor,
-    [switch]$Patch
+    [switch]$Patch,
+    [switch]$Current
 )
 
 $ErrorActionPreference = "Stop"
 $env:GIT_SSL_NO_VERIFY = "true"
 $root = Split-Path -Parent $PSCommandPath
 $ps1File = Join-Path $root "update_modpack.ps1"
+
+if ($Current) {
+    $content = Get-Content -LiteralPath $ps1File -Raw -Encoding UTF8
+    $m = [regex]::Match($content, '\$Script:UpdaterVersion\s*=\s*"([^"]+)"')
+    if ($m.Success) { Write-Host $m.Groups[1].Value } else { Write-Host "UNKNOWN" }
+    exit 0
+}
 
 # ==================== 1. 检查工作区 ====================
 Push-Location -LiteralPath $root
