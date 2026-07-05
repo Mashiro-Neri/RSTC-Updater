@@ -516,6 +516,7 @@ function Invoke-UpdaterUpdate {
     } catch {
         Write-ErrorT "下载失败: $_"
         try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
+        if ($Script:IsInteractive) { Write-Host "`n  按任意键返回..."; [Console]::ReadKey($true) | Out-Null }
         return
     }
 
@@ -541,6 +542,7 @@ pause
     Set-Content -LiteralPath $updateBat -Value $batContent -Encoding ASCII
 
     Write-Box -Lines @("更新文件已就绪!", "关闭此窗口后将自动替换文件", "请重新运行 update_modpack.bat") -Color Green
+    if ($Script:IsInteractive) { Write-Host "`n  按任意键开始更新..."; [Console]::ReadKey($true) | Out-Null }
 
     Start-Process -FilePath $updateBat -WindowStyle Normal
     exit 0
