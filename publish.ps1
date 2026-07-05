@@ -32,7 +32,7 @@ try {
 
 # ==================== 2. 读取当前版本 ====================
 $ps1Content = Get-Content -LiteralPath $ps1File -Raw -Encoding UTF8
-$dollar = '$'
+$dollar = '\$'
 $matchPattern = $dollar + 'Script:UpdaterVersion\s*=\s*"([^"]+)"'
 $currentMatch = [regex]::Match($ps1Content, $matchPattern)
 if (-not $currentMatch.Success) {
