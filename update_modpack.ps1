@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v3.4
+#  红石镇客户端更新器 v3.5
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.4"
+$Script:UpdaterVersion = "3.5"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -591,7 +591,8 @@ pause
     Write-Box -Lines @("更新文件已就绪!", "关闭此窗口后将自动替换文件", "请重新运行 update_modpack.bat") -Color Green
     if ($Script:IsInteractive) { Write-Host "`n  按任意键开始更新..."; [Console]::ReadKey($true) | Out-Null }
 
-    cmd /c start "" "cmd /c `"$updateBat`""
+    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $updateBat) -WindowStyle Normal
+    Start-Sleep -Milliseconds 500
     exit 0
 }
 
