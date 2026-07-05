@@ -12,7 +12,8 @@ param(
     [switch]$Major,
     [switch]$Minor,
     [switch]$Patch,
-    [switch]$Current
+    [switch]$Current,
+    [switch]$Remote
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,10 +21,25 @@ $env:GIT_SSL_NO_VERIFY = "true"
 $root = Split-Path -Parent $PSCommandPath
 $ps1File = Join-Path $root "update_modpack.ps1"
 
+$localVer = ""
+$content = Get-Content -LiteralPath $ps1File -Raw -Encoding UTF8
+$m = [regex]::Match($content, '\$Script:UpdaterVersion\s*=\s*"([^"]+)"')
+if ($m.Success) { $localVer = $m.Groups[1].Value }
+
 if ($Current) {
-    $content = Get-Content -LiteralPath $ps1File -Raw -Encoding UTF8
-    $m = [regex]::Match($content, '\$Script:UpdaterVersion\s*=\s*"([^"]+)"')
-    if ($m.Success) { Write-Host $m.Groups[1].Value } else { Write-Host "UNKNOWN" }
+    Write-Host $localVer
+    exit 0
+}
+
+if ($Remote) {
+    Write-Host ("LOCAL:" + $localVer)
+    try {
+        $api = "https://api.github.com/repos/Mashiro-Neri/RSTC-Updater/releases/latest"
+        $release = Invoke-RestMethod -Uri $api -Method Get -TimeoutSec 10
+        Write-Host ("REMOTE:" + $release.tag_name.TrimStart('v'))
+    } catch {
+        Write-Host "REMOTE:N/A"
+    }
     exit 0
 }
 
