@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v3.6
+#  红石镇客户端更新器 v3.7
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "3.6"
+$Script:UpdaterVersion = "3.7"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -557,7 +557,7 @@ function Invoke-UpdaterUpdate {
     Write-Success "下载完成!"
     Write-Host ""
 
-    # 在 PowerShell 中完成文件替换 (避免 bat 编码问题)
+    # 在 PowerShell 中完成文件替换 (原生 Unicode, 无编码问题)
     $newPs1Path = Join-Path $tempDir "update_modpack.ps1"
     $newBatPath = Join-Path $tempDir "update_modpack.bat"
     $destPs1 = Join-Path $scriptDir "update_modpack.ps1"
@@ -566,7 +566,6 @@ function Invoke-UpdaterUpdate {
     try {
         Copy-Item -LiteralPath $newPs1Path -Destination $destPs1 -Force -ErrorAction Stop
         Copy-Item -LiteralPath $newBatPath -Destination $destBat -Force -ErrorAction Stop
-        Write-Success "文件替换完成"
     } catch {
         Write-Box -Lines @("替换失败! 请手动复制:", "$newPs1Path", "→ $scriptDir\") -Color Red
         if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
@@ -574,28 +573,11 @@ function Invoke-UpdaterUpdate {
         return
     }
 
-    # 写清理脚本 (无中文路径, 纯清理 + 提示)
-    $updateBat = Join-Path $tempDir "_apply.bat"
-    $batContent = @"
-@echo off
-chcp 65001 >nul 2>&1
-ping 127.0.0.1 -n 2 >nul
-cd /d "%TEMP%"
-rmdir /S /Q "$tempDir" >nul 2>&1
-echo.
-echo ==========================================
-echo   更新完成! 请重新运行 update_modpack.bat
-echo ==========================================
-echo.
-pause
-"@
-    Set-Content -LiteralPath $updateBat -Value $batContent -Encoding UTF8
+    # 清理临时目录
+    try { [System.IO.Directory]::Delete($tempDir, $true) } catch {}
 
-    Write-Box -Lines @("更新完成!", "请重新运行 update_modpack.bat", "此窗口将自动清理临时文件") -Color Green
-    if ($Script:IsInteractive) { Write-Host "`n  按任意键退出当前程序..."; [Console]::ReadKey($true) | Out-Null }
-
-    Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $updateBat) -WindowStyle Normal
-    Start-Sleep -Milliseconds 500
+    Write-Box -Lines @("更新完成!", "文件已替换到:", $scriptDir, "请重新运行 update_modpack.bat") -Color Green
+    if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }
     exit 0
 }
 
