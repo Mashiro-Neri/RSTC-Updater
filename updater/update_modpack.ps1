@@ -1,12 +1,12 @@
 # ============================================================
-#  红石镇客户端更新器 v4.6
+#  红石镇客户端更新器 v4.7
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "4.6"
+$Script:UpdaterVersion = "4.7"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -28,6 +28,10 @@ $Script:DownloadMirrors = @(
 )
 $Script:DownloadRetries = 3
 $Script:DownloadBufferSize = 65536
+# 测速采样: 先预热跳过慢启动, 再按时长/字节采样, 测稳定带宽而非延迟
+$Script:SpeedTestWarmupBytes = 131072   # 预热 128KB, 跳过 TCP 慢启动/TTFB
+$Script:SpeedTestMaxBytes    = 3145728  # 采样上限 3MB
+$Script:SpeedTestMaxSeconds  = 2.0      # 采样上限 2 秒
 # ============================================================
 
 $Script:Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -185,20 +189,54 @@ function Set-LocalVersion {
 }
 
 function Test-MirrorSpeed {
-    param([string]$MirrorUrl, [string]$TestUrl, [int]$TestBytes = 196608)
+    param(
+        [string]$MirrorUrl,
+        [string]$TestUrl,
+        [int]$WarmupBytes = $Script:SpeedTestWarmupBytes,
+        [int]$MaxBytes = $Script:SpeedTestMaxBytes,
+        [double]$MaxSeconds = $Script:SpeedTestMaxSeconds
+    )
     $url = if ($MirrorUrl) { $MirrorUrl + $TestUrl } else { $TestUrl }
+    $stream = $null; $resp = $null
     try {
-        $req = [System.Net.HttpWebRequest]::Create($url); $req.Timeout = 10000; $req.ReadWriteTimeout = 10000
-        $sw = [System.Diagnostics.Stopwatch]::StartNew(); $resp = $req.GetResponse(); $stream = $resp.GetResponseStream()
-        $buf = [byte[]]::new(4096); $total = 0
-        while (($r = $stream.Read($buf, 0, $buf.Length)) -gt 0) { $total += $r; if ($total -ge $TestBytes) { break } }
-        $stream.Close(); $resp.Close(); $sw.Stop()
-        if ($total -gt 0) { return @{ Speed = [math]::Round($total / 1024.0 / $sw.Elapsed.TotalSeconds); Status = 'ok' } }
+        $req = [System.Net.HttpWebRequest]::Create($url); $req.Timeout = 10000; $req.ReadWriteTimeout = 10000; $req.AllowAutoRedirect = $true
+        $resp = $req.GetResponse(); $stream = $resp.GetResponseStream()
+        $buf = [byte[]]::new(65536)
+
+        # 预热: 读掉前 WarmupBytes 越过 TCP 慢启动/TTFB, 不计时; 同时用 swTotal 兜底小文件
+        $swTotal = [System.Diagnostics.Stopwatch]::StartNew()
+        $warm = 0; $ended = $false
+        while ($warm -lt $WarmupBytes) {
+            $r = $stream.Read($buf, 0, $buf.Length)
+            if ($r -le 0) { $ended = $true; break }
+            $warm += $r
+        }
+
+        if (-not $ended) {
+            # 大文件: 预热后开一个干净的计时窗口测稳定带宽
+            $sw = [System.Diagnostics.Stopwatch]::StartNew(); $measured = 0
+            while ($measured -lt $MaxBytes -and $sw.Elapsed.TotalSeconds -lt $MaxSeconds) {
+                $r = $stream.Read($buf, 0, $buf.Length)
+                if ($r -le 0) { break }
+                $measured += $r
+            }
+            $sw.Stop()
+            $secs = $sw.Elapsed.TotalSeconds
+            if ($measured -gt 0 -and $secs -gt 0) { return @{ Speed = [math]::Round($measured / 1024.0 / $secs); Status = 'ok' } }
+        }
+
+        # 小文件兜底: 流在预热期就读完, 用整段传输(不含连接)估速
+        $swTotal.Stop()
+        $secs = $swTotal.Elapsed.TotalSeconds
+        if ($warm -gt 0 -and $secs -gt 0) { return @{ Speed = [math]::Round($warm / 1024.0 / $secs); Status = 'ok' } }
     } catch {
         $msg = "$_"
         if ($msg -match 'forcibly closed|refused|aborted') { return @{ Speed = 0; Status = 'blocked' } }
         if ($msg -match 'timed out|timeout') { return @{ Speed = 0; Status = 'timeout' } }
         if ($msg -match 'resolve|not found|no such host') { return @{ Speed = 0; Status = 'dns' } }
+    } finally {
+        if ($stream) { try { $stream.Close(); $stream.Dispose() } catch {} }
+        if ($resp) { try { $resp.Close(); $resp.Dispose() } catch {} }
     }
     return @{ Speed = 0; Status = 'blocked' }
 }
@@ -512,7 +550,7 @@ function Invoke-UpdaterUpdate {
             if ($res.Status -eq 'ok') { Write-Host "`r  ▶ $($m.Name): $(if ($res.Speed -ge 1024){"$([math]::Round($res.Speed/1024,1))MB/s"}else{"$($res.Speed)KB/s"})" -ForegroundColor Green }
             else { Write-Host "`r  ✗ $($m.Name): $(switch($res.Status){'blocked'{'无法连接'};'timeout'{'超时'};'dns'{'DNS失败'};default{'不可用'}})" -ForegroundColor Red }
         }
-        $best = $results | Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
+        $best = $results | Where-Object { [double]$_.Speed -gt 0 } | Sort-Object { [double]$_.Speed } -Descending | Select-Object -First 1
         if ($best) { Write-Host ""; Write-Success "最快: $($best.Name)"; $Script:SelectedMirror = $best.Index }
         else { Write-Warn "全部不可用，使用默认直连" }
     } else {
@@ -649,7 +687,7 @@ function Main {
                             if ($res.Status -eq 'ok') { Write-Host "`r  ▶ $($m.Name): $(if ($res.Speed -ge 1024){"$([math]::Round($res.Speed/1024,1))MB/s"}else{"$($res.Speed)KB/s"})" -ForegroundColor Green }
                             else { Write-Host "`r  ✗ $($m.Name): $(switch($res.Status){'blocked'{'无法连接'};'timeout'{'超时'};'dns'{'DNS失败'};default{'不可用'}})" -ForegroundColor Red }
                         }
-                        $best = $results | Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
+                        $best = $results | Where-Object { [double]$_.Speed -gt 0 } | Sort-Object { [double]$_.Speed } -Descending | Select-Object -First 1
                         if ($best) { Write-Success "最快: $($best.Name)"; $Script:SelectedMirror = $best.Index }
                         else { Write-Warn "全部不可用，使用默认" }
                     } else {
@@ -796,7 +834,7 @@ function Main {
                         if ($res.Status -eq 'ok') { Write-Host "`r  ▶ $($m.Name): $(if ($res.Speed -ge 1024){"$([math]::Round($res.Speed/1024,1))MB/s"}else{"$($res.Speed)KB/s"})" -ForegroundColor Green }
                         else { Write-Host "`r  ✗ $($m.Name): $(switch($res.Status){'blocked'{'无法连接'};'timeout'{'超时'};'dns'{'DNS失败'};default{'不可用'}})" -ForegroundColor Red }
                     }
-                    $best = $results | Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
+                    $best = $results | Where-Object { [double]$_.Speed -gt 0 } | Sort-Object { [double]$_.Speed } -Descending | Select-Object -First 1
                     if ($best) { Write-Host ""; Write-Success "最快: $($best.Name)"; $Script:SelectedMirror = $best.Index }
                     else { Write-Warn "全部不可用，使用默认" }
                 } else {
