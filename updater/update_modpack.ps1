@@ -138,10 +138,11 @@ function Write-Banner {
         "██║  ██║███████║   ██║",
         "╚═╝  ╚═╝╚══════╝   ╚═╝"
     )
+    $padLeft = 4
     foreach ($l in $art) {
-        # 艺术字全为单格宽度字符(制表/方块), 左对齐并补齐右端到内宽 50, 使右边界 ║ 与框体对齐
-        $pr = [Math]::Max(0, $inner - $l.Length)
-        Write-Host ("  ║" + $l + (' ' * $pr) + "║") -ForegroundColor $c
+        # 艺术字全为单格宽度字符(制表/方块), 左侧留 4 格边距并补齐右端到内宽 50, 使右边界 ║ 与框体对齐
+        $pr = [Math]::Max(0, $inner - $padLeft - $l.Length)
+        Write-Host ("  ║" + (' ' * $padLeft) + $l + (' ' * $pr) + "║") -ForegroundColor $c
     }
     Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor $c
     $title = "红石镇客户端更新器 v$($Script:UpdaterVersion)"
