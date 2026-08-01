@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  红石镇客户端更新器 v4.7
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
@@ -32,6 +32,8 @@ $Script:DownloadBufferSize = 65536
 $Script:SpeedTestWarmupBytes = 131072   # 预热 128KB, 跳过 TCP 慢启动/TTFB
 $Script:SpeedTestMaxBytes    = 3145728  # 采样上限 3MB
 $Script:SpeedTestMaxSeconds  = 2.0      # 采样上限 2 秒
+# TUI 主题配色 (统一所有 TUI 组件的颜色)
+$Script:Theme = @{ Accent='Cyan'; Title='Red'; Success='Green'; Warn='Yellow'; Error='Red'; Muted='DarkGray'; Info='Gray'; MenuBg='DarkCyan'; ProgressFill='Cyan'; ProgressEmpty='DarkGray' }
 # ============================================================
 
 $Script:Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -45,23 +47,32 @@ $Script:TempRepo = $null
 # ==================== TUI 工具函数 ====================
 $Script:TuiWidth = if ($Host.UI.RawUI -and $Host.UI.RawUI.WindowSize) { [Math]::Min($Host.UI.RawUI.WindowSize.Width - 4, 78) } else { 50 }
 
+# 计算字符串在终端中的显示宽度: CJK/全角字符按 2 计算, 其他按 1
+function Get-DisplayWidth {
+    param([string]$s)
+    if ([string]::IsNullOrEmpty($s)) { return 0 }
+    $cjk = ($s -split '' | Where-Object { $_ -match '[^\u0000-\u00ff]' }).Count
+    return $cjk * 2 + ($s.Length - $cjk)
+}
+
 function Write-Box {
     param([string[]]$Lines, [string]$Color = "Cyan")
     $w = 52
-    Write-Host ("  " + [string]::new('═', $w)) -ForegroundColor $Color
+    Write-Host ("  " + [string]::new('═', $w)) -ForegroundColor $Script:Theme.Accent
     foreach ($line in $Lines) {
-        $pad = [Math]::Max(0, [int](($w - $line.Length) / 2))
+        $tw = Get-DisplayWidth $line
+        $pad = [Math]::Max(0, [int](($w - $tw) / 2))
         Write-Host ("  " + (' ' * $pad) + $line) -ForegroundColor $Color
     }
-    Write-Host ("  " + [string]::new('═', $w)) -ForegroundColor $Color
+    Write-Host ("  " + [string]::new('═', $w)) -ForegroundColor $Script:Theme.Accent
     Write-Host ""
 }
 
 function Write-Step {
     param([int]$Step, [int]$Total, [string]$Title)
     Write-Host ""
-    Write-Host "  [ $Step/$Total ] $Title" -ForegroundColor Cyan
-    Write-Host ("  " + [string]::new('─', 50))
+    Write-Host "  [ $Step/$Total ] $Title" -ForegroundColor $Script:Theme.Accent
+    Write-Host ("  " + [string]::new('─', 52))
 }
 
 function Show-Menu {
@@ -69,13 +80,13 @@ function Show-Menu {
     $selected = $Default; $count = $Items.Length; $firstLine = [Console]::CursorTop
     while ($true) {
         [Console]::SetCursorPosition(0, $firstLine)
-        if ($Title) { Write-Host "  $Title" -ForegroundColor DarkGray }
+        if ($Title) { Write-Host "  $Title" -ForegroundColor $Script:Theme.Muted }
         for ($i = 0; $i -lt $count; $i++) {
-            if ($i -eq $selected) { Write-Host ("  ▶ " + $Items[$i]) -ForegroundColor White -BackgroundColor DarkCyan }
-            else { Write-Host ("    " + $Items[$i]) -ForegroundColor Gray }
+            if ($i -eq $selected) { Write-Host ("  ▶ " + $Items[$i]) -ForegroundColor White -BackgroundColor $Script:Theme.MenuBg }
+            else { Write-Host ("    " + $Items[$i]) -ForegroundColor $Script:Theme.Info }
         }
         $hintLine = if ($HasBack) { "  ↑↓ 移动  Enter 确认   B 返回" } else { "  ↑↓ 移动  Enter 确认" }
-        Write-Host $hintLine -ForegroundColor DarkGray
+        Write-Host $hintLine -ForegroundColor $Script:Theme.Muted
         $totalLines = $count + 1; if ($Title) { $totalLines++ }
         $key = [Console]::ReadKey($true); $keyStr = $key.Key.ToString()
         if ($keyStr -eq 'B' -or $keyStr -eq 'Escape') { $selected = -1; break }
@@ -103,38 +114,42 @@ function Show-Input {
 function Show-Progress {
     param([double]$Percent, [string]$Status)
     $barWidth = 40; $filled = [Math]::Max(0, [Math]::Min($barWidth, [Math]::Round($Percent / 100 * $barWidth)))
-    $bar = "  [" + [string]::new('#', $filled) + [string]::new('-', $barWidth - $filled) + "]"
-    Write-Host ("`r$bar $("{0,3}" -f [Math]::Round($Percent))%  $Status" + ' ' * 10) -NoNewline
+    Write-Host ("`r  [") -NoNewline
+    Write-Host ([string]::new('#', $filled)) -NoNewline -ForegroundColor $Script:Theme.ProgressFill
+    Write-Host ([string]::new('-', $barWidth - $filled)) -NoNewline -ForegroundColor $Script:Theme.ProgressEmpty
+    Write-Host (("] {0,3}%  $Status" -f [Math]::Round($Percent)) + ' ' * 10) -NoNewline
 }
 
-function Write-Success { Write-Host "  ✓ $args" -ForegroundColor Green }
-function Write-Warn    { Write-Host "  ⚠ $args" -ForegroundColor Yellow }
-function Write-ErrorT  { Write-Host "  ✗ $args" -ForegroundColor Red }
+function Write-Success { Write-Host "  ✓ $args" -ForegroundColor $Script:Theme.Success }
+function Write-Warn    { Write-Host "  ⚠ $args" -ForegroundColor $Script:Theme.Warn }
+function Write-ErrorT  { Write-Host "  ✗ $args" -ForegroundColor $Script:Theme.Error }
 
 function Write-Banner {
     Write-Host ""
     $w = 52; $inner = 50
-    Write-Host ("  ╔" + [string]::new('═', $inner) + "╗") -ForegroundColor Red
-    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor Red
+    $c = $Script:Theme.Title
+    Write-Host ("  ╔" + [string]::new('═', $inner) + "╗") -ForegroundColor $c
+    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor $c
     $art = @(
-        "  ██████╗ ███████╗████████╗                     ",
-        "  ██╔══██╗██╔════╝╚══██╔══╝                     ",
-        "  ██████╔╝███████╗   ██║                        ",
-        "  ██╔══██╗╚════██║   ██║                        ",
-        "  ██║  ██║███████║   ██║                        ",
-        "  ╚═╝  ╚═╝╚══════╝   ╚═╝                        "
+        "██████╗ ███████╗████████╗",
+        "██╔══██╗██╔════╝╚══██╔══╝",
+        "██████╔╝███████╗   ██║",
+        "██╔══██╗╚════██║   ██║",
+        "██║  ██║███████║   ██║",
+        "╚═╝  ╚═╝╚══════╝   ╚═╝"
     )
     foreach ($l in $art) {
-        $p = [int](($inner - $l.Length)/2); if ($p -gt 0) { Write-Host ("  ║" + (' ' * $p) + $l + (' ' * ($inner - $l.Length - $p)) + "║") -ForegroundColor Red }
-        else { Write-Host ("  ║ " + $l + " ║") -ForegroundColor Red }
+        # 艺术字全为单格宽度字符(制表/方块), 左对齐并补齐右端到内宽 50, 使右边界 ║ 与框体对齐
+        $pr = [Math]::Max(0, $inner - $l.Length)
+        Write-Host ("  ║" + $l + (' ' * $pr) + "║") -ForegroundColor $c
     }
-    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor Red
+    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor $c
     $title = "红石镇客户端更新器 v$($Script:UpdaterVersion)"
-    $tw = (($title -split '' | Where-Object { $_ -match '[^\u0000-\u00ff]' }).Count * 2) + ($title.Length - ($title -split '' | Where-Object { $_ -match '[^\u0000-\u00ff]' }).Count)
+    $tw = Get-DisplayWidth $title
     $padL = [Math]::Max(0, [int](($inner - $tw)/2)); $padR = $inner - $tw - $padL
-    Write-Host ("  ║" + (' ' * $padL) + $title + (' ' * $padR) + "║") -ForegroundColor Red
-    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor Red
-    Write-Host ("  ╚" + [string]::new('═', $inner) + "╝") -ForegroundColor Red
+    Write-Host ("  ║" + (' ' * $padL) + $title + (' ' * $padR) + "║") -ForegroundColor $c
+    Write-Host ("  ║" + (' ' * $inner) + "║") -ForegroundColor $c
+    Write-Host ("  ╚" + [string]::new('═', $inner) + "╝") -ForegroundColor $c
     Write-Host ""
 }
 
@@ -656,7 +671,7 @@ function Main {
     # 获取 Release 信息 (两个模式都需要)
     Write-Host "`n  正在获取最新版本信息..." -ForegroundColor Cyan
     $release = Get-LatestRelease
-    if (-not $release) { Write-ErrorT "无法获取 Release 信息，请检查网络或使用梯子"; exit 1 }
+    if (-not $release) { Write-ErrorT "无法获取 Release 信息，请检查网络或使用梯子"; if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }; exit 1 }
 
     # === 首次下载: 下载到桌面 ===
     if ($Script:IsFreshInstall) {
@@ -752,7 +767,7 @@ function Main {
             } catch {
                 $retry++
                 Write-Log "下载出错: $_" "WARN"
-                if ($retry -ge $Script:DownloadRetries) { Write-ErrorT "下载失败, 已重试 $($Script:DownloadRetries) 次"; if (Test-Path $savePath) { Remove-Item $savePath -Force -ErrorAction SilentlyContinue }; exit 1 }
+                if ($retry -ge $Script:DownloadRetries) { Write-ErrorT "下载失败, 已重试 $($Script:DownloadRetries) 次"; if (Test-Path $savePath) { Remove-Item $savePath -Force -ErrorAction SilentlyContinue }; if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }; exit 1 }
             }
         }
         Write-Success "下载完成! $([math]::Round((Get-Item -LiteralPath $savePath).Length/1MB,1))MB, 耗时 $([math]::Round($stopwatch.Elapsed.TotalSeconds,1))秒"
@@ -789,7 +804,7 @@ function Main {
                     }
                     if (-not $Script:McRoot) {
                         $mi = Show-Input "请将版本文件夹拖入窗口或自行输入 (启动器点击版本文件夹后打开的路径)"
-                        if (-not $mi) { exit 1 }
+                        if (-not $mi) { if ($Script:IsInteractive) { Write-Host "`n  按任意键退出..."; [Console]::ReadKey($true) | Out-Null }; exit 1 }
                         if ($mi -eq 'q' -or $mi -eq 'Q') { $Script:McRoot = $null; continue }
                         if (Test-Path -LiteralPath (Join-Path $mi "options.txt")) { $Script:McRoot = $mi }
                         elseif (Test-Path -LiteralPath (Join-Path $mi ".minecraft\options.txt")) { $Script:McRoot = Join-Path $mi ".minecraft" }

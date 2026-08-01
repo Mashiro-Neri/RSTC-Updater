@@ -1,5 +1,6 @@
 @echo off
 setlocal
+chcp 65001 >nul
 
 set "SCRIPT_DIR=%~dp0"
 set "PS_SCRIPT=%SCRIPT_DIR%update_modpack.ps1"
@@ -15,3 +16,4 @@ if %errorlevel%==0 (
 ) else (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %*
 )
+if %errorlevel% neq 0 pause
