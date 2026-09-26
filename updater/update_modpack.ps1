@@ -1,12 +1,12 @@
 ﻿# ============================================================
-#  红石镇客户端更新器 v4.9
+#  红石镇客户端更新器 v4.11
 #  基于 GitHub Releases, 支持检查更新 / 首次下载 / 版本管理 / 自更新
 # ============================================================
 
 # ==================== 配置区 ====================
 $Script:RepoUrl  = "https://github.com/Mashiro-Neri/Redstone-Town-Client_update_modpack.git"
 $Script:VersionFile = "RSTC_version.txt"
-$Script:UpdaterVersion = "4.9"
+$Script:UpdaterVersion = "4.11"
 $Script:UpdaterRepo   = "Mashiro-Neri/RSTC-Updater"
 
 # 同步目录
@@ -177,7 +177,7 @@ function Get-LatestRelease {
         return @{
             Tag     = $release.tag_name
             Name    = $release.name
-            Body    = if ($release.body) { ($release.body -split "`n" | Select-Object -First 15) -join "`n" } else { "" }
+            Body    = if ($release.body) { ($release.body -split "`r?`n") -join "`n" } else { "" }
             Url     = $asset.browser_download_url
             Size    = $asset.size
             Asset   = $asset.name
@@ -512,7 +512,7 @@ function Get-UpdaterRelease {
         return @{
             Tag       = $release.tag_name
             Name      = $release.name
-            Body      = if ($release.body) { ($release.body -split "`n" | Select-Object -First 15) -join "`n" } else { "" }
+            Body      = if ($release.body) { ($release.body -split "`r?`n") -join "`n" } else { "" }
             Ps1Url    = $ps1Asset.browser_download_url
             BatUrl    = $batAsset.browser_download_url
         }
@@ -544,7 +544,7 @@ function Invoke-UpdaterUpdate {
     Write-Box -Lines @("$($updaterRelease.Name)", "版本: $($updaterRelease.Tag)") -Color Cyan
     if ($updaterRelease.Body) {
         Write-Host "  更新内容:" -ForegroundColor Cyan
-        $updaterRelease.Body -split "`n" | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+        $updaterRelease.Body -split "`r?`n" | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
     }
     Write-Host ""
 
@@ -683,7 +683,7 @@ function Main {
                     Write-Step -Step 1 -Total 2 -Title "版本信息"
                     Write-Box -Lines @("$($release.Name)", "版本: $($release.Tag)", "大小: $([math]::Round($release.Size/1MB,1))MB") -Color Cyan
                     Write-Host "  更新日志:" -ForegroundColor Cyan
-                    $release.Body -split "`n" | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+                    $release.Body -split "`r?`n" | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
                     Write-Host ""
                     $confirm = Show-Menu -Title "是否开始下载?" -Items @("是 - 开始下载", "否 - 取消") -Default 0
                     if ($confirm -ne 0) { Write-Host "  已取消"; return }
@@ -829,7 +829,7 @@ function Main {
                 Write-Host ""
                 Write-Box -Lines @("$($release.Name)", "大小: $([math]::Round($release.Size/1MB,1))MB") -Color Cyan
                 Write-Host "  更新日志:" -ForegroundColor Cyan
-                $release.Body -split "`n" | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+                $release.Body -split "`r?`n" | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
                 Write-Host ""
                 $confirm = Show-Menu -Title "是否更新?" -Items @("是 - 开始下载更新", "否 - 取消") -Default 0 -HasBack $true
                 if ($confirm -eq -1) { $step--; continue }
