@@ -676,7 +676,9 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **安装流程实测**：26.3 夹具包成功装出实例（`PACK_APPLY=PASS`）；真实 Release 路径在 6.0 发布前会因「5.5 基于 1.21.10」被正确拦截（exit 5，不建实例）。证据：`evidence/v1/install-flow-20261111_232852/`。
 
-**V1 端到端冒烟（26 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 越界 zip 拒绝不崩溃 → 隔离检测按实际值 → 迁移默认拒绝覆盖 / 显式覆盖前备份 / 两个 `XaeroWaypoints*` 都迁移 / 源不动 / 内容哈希一致 → 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
+**V1 端到端冒烟（30 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 合法 index 的越界 zip 被拒（exit 7、实例哈希不变、无越界写盘）→ 隔离检测按实际值 → 迁移默认拒绝覆盖 / 显式覆盖前备份 / 两个 `XaeroWaypoints*` 都迁移 / 源不动 / 内容哈希一致 → **目标只读时迁移失败自动回滚（exit 2，目标哈希恢复）** → 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
+
+**复审加固（R2）**：迁移异常自动回滚（恢复被覆盖、删除新建）；自更新备份任一文件失败即中止；替换失败保留备份并记录错误；菜单新增「回滚未完成更新」；多实例时状态标注数量。
 
 ---
 
