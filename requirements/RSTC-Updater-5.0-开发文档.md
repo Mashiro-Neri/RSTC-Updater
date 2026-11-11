@@ -409,6 +409,8 @@
 | 复用已有文件 | 目标目录已有同大小且哈希一致的原版 jar / 库 / 资源对象时跳过下载（最多省 646 MB） |
 | 临时目录 | `.minecraft/.rstc-tmp/<时间戳>/`；成功后清理，失败保留供重试，过期 7 天清理 |
 
+**阶段 0 已实现**：`--fetch-pack`（Release JSON → 多镜像下载 → sha256 强校验 → 应用，记录耗时/速度/剩余空间）；pack 应用支持 `--dry-run` 预览、journal + `--rollback` 显式回滚、内容一致文件复用（幂等更新 422 文件 0 重写）；zip 条目做 zip-slip 校验（盘符/空段/相对段拒绝）。断点续传与并行 Range 仍未实现（V1）。
+
 ### 4.5 空间预检（已核实数值）
 
 | 项 | 大小（实测，2026-11-11） |
@@ -631,10 +633,10 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | **已通过第 3 轮独立审查（PASS）**，待用户验收 | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
 | 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
-| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库），待 A1b 启动验收 | `evidence/stage0/provision-0-2/1eaf9ae…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
-| 0-3 隔离配置写入 | **三实例已写入** PCL `Setup.ini`（`VersionArgumentIndieV2:True`）与 HMCL `hmclversion.cfg`（`gameDirType:1`）；待启动生效验证 | 同上 |
-| 0-4 5.5 真实包安装 | **已通过**：zip 609,837,724 B（sha256 与 Release digest 一致）；426 个 overrides 条目、跳过 4 个 `PCL/`、安装 422 文件 / 127 个 mod / 598.7 MiB；安装 3.6 s；幂等更新 422 全复用；玩家数据保留、自加 mod 默认删除 | `evidence/stage0/pack-0-4/7a88382…/` |
-| 0-5 测试包更新链路 | **已通过**（20 条断言）：pack-min→v2 的删除/新增/保留清单/options 冲突/journal/备份保留 3 份 | `evidence/stage0/pack-0-5/96218d8…/` |
+| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库；条件 JVM 参数保留），待 A1b 启动验收 | `evidence/stage0/provision-0-2/6f12437…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
+| 0-3 隔离配置写入 | **已实现“只补键、不覆盖”**：PCL 保留自定义键并 upsert 隔离键；HMCL 已存在则只读不改（实测）；待启动生效验证 | 同上 |
+| 0-4 5.5 真实包安装 | **已通过完整链路（18 条断言）**：`--fetch-pack` 下载 609,837,724 B / 79.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422 一致** → 幂等更新 422 复用 → 玩家数据保护；峰值空间估算约 1.24 GB | `evidence/stage0/pack-0-4/6f12437…/` |
+| 0-5 测试包更新链路 | **已通过**（35 条断言）：pack-min→v2 的删除/新增/保留清单/options 冲突/journal/备份保留 3 份；含 D1 中断注入+回滚、D2 dry-run 预览 | `evidence/stage0/pack-0-5/96218d8…/`（初版）、`6f12437…`（第 2 版） |
 | 0-6 复用/并行 | **复用已实测**：CmlLib warm 0 增量；pack 幂等更新 422 文件全部复用不重写；并行下载由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数） | 0-1/0-4 证据 |
 | 0-7 v4 手动迁移 | **指南已产出**：`requirements/v4到v5迁移指南.md`（含 v4 自更新坑与占位资产方案、回滚）；待 v5 Release 后用户实测 | — |
 
