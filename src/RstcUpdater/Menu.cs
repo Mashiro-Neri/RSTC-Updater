@@ -45,6 +45,8 @@ namespace RstcUpdater
                             gameDir = await InstallActionAsync(gameDir);
                             break;
                         case "更新现有实例":
+                            await UpdateActionAsync(gameDir);
+                            break;
                         case "从旧实例迁移":
                         case "检查更新器更新":
                             AnsiConsole.MarkupLine("[yellow]该功能正在接入（V1 后续提交实现）[/]");
@@ -345,6 +347,102 @@ namespace RstcUpdater
             }
 
             return dir;
+        }
+
+        private static async Task UpdateActionAsync(string gameDir)
+        {
+            var config = AppConfig.Load();
+            if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
+            {
+                AnsiConsole.MarkupLine("[yellow]未定位游戏目录[/]");
+                return;
+            }
+
+            string instance = FindCurrentInstance(gameDir, config);
+            if (string.IsNullOrEmpty(instance))
+            {
+                AnsiConsole.MarkupLine("[yellow]未找到已安装实例，请先用「安装到新目录」[/]");
+                return;
+            }
+
+            AnsiConsole.Status().Start("检查更新…", ctx =>
+            {
+                config.LastInstance = instance;
+                config.Save();
+            });
+
+            UpdateCheck check = await UpdaterFlow.CheckAsync(gameDir, instance).ConfigureAwait(false);
+            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]更新检查[/]");
+            table.AddColumn("项");
+            table.AddColumn("值");
+            table.AddRow("实例", Markup.Escape(instance));
+            table.AddRow("本地版本", Markup.Escape(check.LocalVersion ?? "未知"));
+            table.AddRow("本地 MC", Markup.Escape(check.LocalMinecraft ?? "未知"));
+            table.AddRow("远端版本", Markup.Escape(check.RemoteVersion ?? "未知") +
+                                (check.RemoteTag == null ? "" : "（" + Markup.Escape(check.RemoteTag) + "）"));
+            table.AddRow("结论", Markup.Escape(check.Message ?? (check.UpdateAvailable ? "有新版本" : "已是最新")));
+            AnsiConsole.Write(table);
+
+            if (check.LocalInstanceMissing || !check.UpdateAvailable)
+            {
+                return;
+            }
+
+            if (!AnsiConsole.Confirm("下载并更新到 " + (check.RemoteVersion ?? "新版本") + "？", true))
+            {
+                return;
+            }
+
+            PreparedUpdate prepared = await UpdaterFlow.PrepareAsync(new UpdateOptions
+            {
+                GameDir = gameDir,
+                Instance = instance
+            }).ConfigureAwait(false);
+            if (prepared == null || prepared.UpToDate)
+            {
+                return;
+            }
+
+            var keep = new List<string>();
+            if (prepared.Plan.Deletes.Count > 0)
+            {
+                var chosen = AnsiConsole.Prompt(
+                    new MultiSelectionPrompt<string>()
+                        .Title("[yellow]勾选要「保留」的文件（不选则删除）[/]")
+                        .PageSize(15)
+                        .AddChoices(prepared.Plan.Deletes));
+                keep.AddRange(chosen);
+            }
+
+            string optionsMode = "keep";
+            string serversMode = "keep";
+            if (prepared.Plan.Conflicts.Any(c => string.Equals(c, "options.txt", StringComparison.OrdinalIgnoreCase)))
+            {
+                string pick = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                    .Title("options.txt 与包内不同，采用哪个？")
+                    .AddChoices("保留我的", "用包里的"));
+                optionsMode = pick == "用包里的" ? "pack" : "keep";
+            }
+
+            if (prepared.Plan.Conflicts.Any(c => string.Equals(c, "servers.dat", StringComparison.OrdinalIgnoreCase)))
+            {
+                string pick = AnsiConsole.Prompt(new SelectionPrompt<string>()
+                    .Title("servers.dat 与包内不同，采用哪个？")
+                    .AddChoices("保留我的", "用包里的"));
+                serversMode = pick == "用包里的" ? "pack" : "keep";
+            }
+
+            if (!AnsiConsole.Confirm("确认执行更新？", true))
+            {
+                UpdaterFlow.CleanupZip(prepared);
+                return;
+            }
+
+            int code = UpdaterFlow.ApplyPrepared(prepared, keep, optionsMode, serversMode);
+            if (code != 0)
+            {
+                AnsiConsole.MarkupLine("[red]更新失败（exit " + code + "）[/]");
+            }
         }
 
         private static string Settings(AppConfig config, string currentGameDir)

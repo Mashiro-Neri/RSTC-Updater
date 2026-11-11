@@ -208,7 +208,7 @@ namespace RstcUpdater
                 try
                 {
                     TryDelete(partial);
-                    using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
+                    using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
                     using (var response = await http.GetAsync(candidate, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
                     {
                         if (!response.IsSuccessStatusCode)
@@ -230,8 +230,26 @@ namespace RstcUpdater
                             long total = 0;
                             var lastReport = Stopwatch.StartNew();
                             int read;
-                            while ((read = await input.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                            while (true)
                             {
+                                // 读数据 60 秒没有进展就判定为卡死，换镜像重试
+                                using (var readCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(60)))
+                                {
+                                    try
+                                    {
+                                        read = await input.ReadAsync(buffer, 0, buffer.Length, readCts.Token).ConfigureAwait(false);
+                                    }
+                                    catch (OperationCanceledException)
+                                    {
+                                        throw new IOException("下载 60 秒无数据（卡死），切换镜像");
+                                    }
+                                }
+
+                                if (read <= 0)
+                                {
+                                    break;
+                                }
+
                                 output.Write(buffer, 0, read);
                                 hash.AppendData(buffer, 0, read);
                                 total += read;

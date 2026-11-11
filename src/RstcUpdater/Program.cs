@@ -72,6 +72,8 @@ namespace RstcUpdater
                         return await FetchPackAsync(ParseFetchOptions(args));
                     case "--install-v1":
                         return await InstallV1Async(args);
+                    case "--update-v1":
+                        return await UpdaterFlow.RunAsync(ParseUpdateOptions(args));
                     case "--status":
                         return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
                     case "--help":
@@ -683,6 +685,53 @@ namespace RstcUpdater
             public string Instance;
         }
 
+        private static UpdateOptions ParseUpdateOptions(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--update-v1 需要游戏目录");
+            }
+
+            var options = new UpdateOptions { GameDir = args[1] };
+            for (int i = 2; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--instance":
+                        options.Instance = NextArgument(args, ref i, "--instance");
+                        break;
+                    case "--zip":
+                        options.LocalZipPath = NextArgument(args, ref i, "--zip");
+                        break;
+                    case "--keep":
+                        options.Keep = NextArgument(args, ref i, "--keep")
+                            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                        break;
+                    case "--options":
+                        options.OptionsMode = ParseKeepOrPack(NextArgument(args, ref i, "--options"), "--options");
+                        break;
+                    case "--servers":
+                        options.ServersMode = ParseKeepOrPack(NextArgument(args, ref i, "--servers"), "--servers");
+                        break;
+                    case "--dry-run":
+                        options.DryRun = true;
+                        break;
+                    case "--force":
+                        options.Force = true;
+                        break;
+                    default:
+                        throw new UsageException("--update-v1 不认识的参数: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrEmpty(options.Instance))
+            {
+                throw new UsageException("--update-v1 需要 --instance <实例名>");
+            }
+
+            return options;
+        }
+
         private static async Task<int> InstallV1Async(string[] args)
         {
             if (args.Length < 2)
@@ -914,7 +963,8 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--tag <Tag>] [--dry-run]");
             writer.WriteLine("  RstcUpdater.exe --fetch-pack <游戏目录> --release-json <文件> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--asset-name <名>] [--keep-zip]");
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
-            writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程（原版+Fabric+实例+整合包；--zip 供本地测试）");
+            writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程");
+            writer.WriteLine("  RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run] [--force]");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
