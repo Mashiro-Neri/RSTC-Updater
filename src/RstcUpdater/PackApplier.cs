@@ -141,24 +141,37 @@ namespace RstcUpdater
                 var deletes = new List<string>();
                 var keptByUser = new List<string>();
                 var conflicts = new List<string>();
+                int reused = 0;
 
                 foreach (var rel in packFiles.Keys.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
                 {
                     string dest = Path.Combine(instanceDir, rel.Replace('/', '\\'));
                     if (File.Exists(dest))
                     {
+                        bool same = SameFile(dest, packFiles[rel]);
                         string top = TopSegment(rel);
                         if (IsOptionsFile(rel))
                         {
                             string mode = string.Equals(top, "options.txt", StringComparison.OrdinalIgnoreCase)
                                 ? options.OptionsMode
                                 : options.ServersMode;
-                            if (string.Equals(mode, "keep", StringComparison.OrdinalIgnoreCase) &&
-                                !SameFile(dest, packFiles[rel]))
+                            if (same)
+                            {
+                                reused++;
+                                continue;
+                            }
+
+                            if (string.Equals(mode, "keep", StringComparison.OrdinalIgnoreCase))
                             {
                                 conflicts.Add(rel);
                                 continue;
                             }
+                        }
+                        else if (same)
+                        {
+                            // 复用已有文件：内容一致则不重写、不备份
+                            reused++;
+                            continue;
                         }
 
                         overwrites.Add(rel);
@@ -216,6 +229,7 @@ namespace RstcUpdater
                 table.AddRow("包内文件（overrides）", packFiles.Count.ToString());
                 table.AddRow("PCL/ 跳过（用户要求）", pclSkipped.ToString());
                 table.AddRow("写入", writes.Count.ToString() + "（其中覆盖 " + overwrites.Count + "）");
+                table.AddRow("复用（内容一致不重写）", reused.ToString());
                 table.AddRow("删除", deletes.Count.ToString() + "（更新模式）");
                 table.AddRow("玩家保留", keptByUser.Count.ToString());
                 table.AddRow("options/servers 冲突（保留本地）", conflicts.Count.ToString());

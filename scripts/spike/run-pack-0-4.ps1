@@ -73,6 +73,7 @@ Check 'journal status=done' ($journal.status -eq 'done')
 # 幂等：同包再更新一次
 $c2 = Run-Case @('--pack', $game, '--zip', $zip, '--instance', $instanceName, '--update')
 Check '同包幂等更新' ($c2.Code -eq 0 -and $c2.Output -match 'PACK_APPLY=PASS') "exit=$($c2.Code)"
+Check '幂等更新复用全部文件（不重写）' ($c2.Output -match '复用（内容一致不重写）[\s\S]{0,80}?422') 'expect reused=422'
 $c2.Output | Out-File -FilePath (Join-Path $dir 'update-idempotent.txt') -Encoding utf8
 
 # 玩家数据保护：加 saves 与玩家 mod 后再更新
