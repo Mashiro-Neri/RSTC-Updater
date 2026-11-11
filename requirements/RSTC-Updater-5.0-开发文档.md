@@ -532,7 +532,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 ### 6.7 产物形态（阶段 0 定）
 
-候选：exe + 若干 DLL（默认）或 Costura/ILMerge 单文件。**阶段 0-1 实测**：产物 = `RstcUpdater.exe`（约 11 KB）+ `RstcUpdater.exe.config` + 16 个 DLL（含托管 `SevenZip.dll`），19 个文件；未发现原生 x86/x64 DLL。单文件（Costura/ILMerge）未实测；`.exe.config` 的 binding redirects 在 .NET Framework 下是必需的，合并需额外处理。杀软误报率未测。
+候选：exe + 若干 DLL（默认）或 Costura/ILMerge 单文件。**阶段 0-1 实测**：产物 = `RstcUpdater.exe`（安装模式加入后约 25 KB，精确值以证据 `SHA256SUMS.binary.txt` 为准）+ `RstcUpdater.exe.config` + 16 个 DLL（含托管 `SevenZip.dll`），19 个文件；未发现原生 x86/x64 DLL。单文件（Costura/ILMerge）未实测；`.exe.config` 的 binding redirects 在 .NET Framework 下是必需的，合并需额外处理。产物身份用 `ProductVersion`（内嵌 commit）+ SHA256 记录，**不保证字节级可复现**（同源码不同环境重建 hash 可能不同，已知限制）。杀软误报率未测。
 
 ---
 
@@ -570,6 +570,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 文档位置 | 仓库 `requirements/` |
 | 发布包 `PCL/` | **不含**（用户纠正；隔离配置改由更新器写入） |
 | 测试床 | 本机 `26.3-Fabric` 试验田可用 |
+| 库数量验收口径 | 74（Windows 客户端规则过滤后的 artifact 数；用户确认 q-accept-74） |
 
 ---
 
@@ -609,7 +610,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 | # | Spike | 通过标准 |
 |---|---|---|
-| 0-1 | .NET Framework 4.8 控制台 + CmlLib 4.1.0 + Spectre 0.57.2，安装 26.3 原版 | 能装出 `versions/26.3/26.3.json`、client jar = 41,483,720 B、`assets/indexes/34.json`（5149 对象）、`libraries/*.jar` ≥ 100；产物列出全部 DLL；中文界面不错位；证据绑定 commit |
+| 0-1 | .NET Framework 4.8 控制台 + CmlLib 4.1.0 + Spectre 0.57.2，安装 26.3 原版 | 能装出 `versions/26.3/26.3.json`、client jar = 41,483,720 B、`assets/indexes/34.json`（5149 对象）、`libraries/*.jar` ≥ 74（Windows 客户端规则：114 个 artifact 中 40 个属其他 OS/native，被规则拒绝；用户确认 q-accept-74）；产物列出全部 DLL；中文界面不错位；证据绑定 commit |
 | 0-2 | 实例 json 三方案（A2/A1/B）各做一份 | PCL2 与 HMCL 都能列出并启动；记录哪份能启动、启动日志差异 |
 | 0-3 | 隔离配置写入（不依赖包内 `PCL/`） | PCL2 读到 `VersionArgumentIndieV2:True` 后 mod 生效；HMCL 读到 `gameDirType` 后 mod 生效；已存在的配置不被破坏；包内无 `PCL/` 时新装实例也能生效 |
 | 0-4 | 5.5 真实包安装 | 完整跑通下载→校验→解压→写入→自检；记录耗时与峰值空间 |
@@ -628,7 +629,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 项 | 状态 | 证据 |
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | 已通过独立复跑（第 1 轮审查 FAIL 的 R-02/R-03/R-06/R-07/R-08 已修） | `evidence/stage0/net48-probe/085bb8f…/`（commit、SHA256SUMS、facts） |
-| 0-1 真实安装 26.3 | **已通过**（L2，用户已确认范围：仅临时目录）：cold 2 分 29 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/e5b700f…/20261111_211437/`；临时目录 `evidence/stage0/test-minecraft-20261111_211436/` |
+| 0-1 真实安装 26.3 | **已实现，待第 3 轮审查确认**（L2，用户已确认范围：仅临时目录）：cold 2 分 29 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/e5b700f…/20261111_211437/`；临时目录 `evidence/stage0/test-minecraft-20261111_211436/` |
 | 0-2 实例 json 三方案 | 未开始 | — |
 | 0-3 隔离配置写入 | 未开始 | — |
 | 0-4 5.5 真实包安装 | 未开始 | — |

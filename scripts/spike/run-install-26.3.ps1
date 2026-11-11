@@ -64,4 +64,5 @@ Get-ChildItem -LiteralPath $full -Recurse -File | Measure-Object -Property Lengt
 Write-Host "install=$installExit verify=$verifyExit warm=$warmExit"
 Write-Host "evidence: $dir"
 
-if ($installExit -ne 0 -or $verifyExit -ne 0) { exit 1 }
+if ($installExit -ne 0 -or $verifyExit -ne 0 -or $warmExit -ne 0 -or $verifyWarmExit -ne 0) { exit 1 }
+exit 0

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -26,6 +27,12 @@ namespace RstcUpdater
         private const string TargetVersion = "26.3";
         private const int ExpectedAssetObjects = 5149;
         private const int ExpectedClientLibraries = 74; // 26.3 按 Windows 客户端规则过滤后的 artifact 数（2026-11-11 实测）
+
+        // 阶段 0 安全护栏：默认拒绝写入玩家真实实例（产品阶段由用户明确选择目标目录后移除）
+        private static readonly string[] DefaultForbiddenTargets =
+        {
+            @"E:\其他文件\红石镇客户端"
+        };
         private const long ExpectedClientJarSize = 41483720L;
 
         private const int ExitOk = 0;
@@ -226,7 +233,7 @@ namespace RstcUpdater
 
             Directory.CreateDirectory(gameDir);
             AnsiConsole.Write(new Rule("[cyan]安装 Minecraft " + TargetVersion + "（阶段 0 验证）[/]").RuleStyle("grey"));
-            AnsiConsole.MarkupLine("目标: [yellow]" + gameDir + "[/]");
+            AnsiConsole.MarkupLine("目标: [yellow]" + Markup.Escape(gameDir) + "[/]");
             AnsiConsole.MarkupLine("说明: 不下载 Java 运行时（产品语义：只检测），仅安装游戏本体/库/资源。");
 
             var stopwatch = Stopwatch.StartNew();
@@ -293,7 +300,7 @@ namespace RstcUpdater
                 }
                 catch (OperationCanceledException)
                 {
-                    AnsiConsole.MarkupLine("[yellow]安装已取消，保留现场供排查：[/]" + gameDir);
+                    AnsiConsole.MarkupLine("[yellow]安装已取消，保留现场供排查：[/]" + Markup.Escape(gameDir));
                     return ExitCancelled;
                 }
                 catch (Exception ex)
@@ -396,9 +403,16 @@ namespace RstcUpdater
             int assetObjects = -1;
             if (File.Exists(assetIndex))
             {
-                using (var doc = JsonDocument.Parse(File.ReadAllText(assetIndex)))
+                try
                 {
-                    assetObjects = doc.RootElement.GetProperty("objects").EnumerateObject().Count();
+                    using (var doc = JsonDocument.Parse(File.ReadAllText(assetIndex)))
+                    {
+                        assetObjects = doc.RootElement.GetProperty("objects").EnumerateObject().Count();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("解析 assets/indexes/34.json 失败: " + ex.GetType().Name + ": " + ex.Message);
                 }
             }
 
@@ -437,18 +451,26 @@ namespace RstcUpdater
                 throw new UsageException("安装目录必须是绝对路径");
             }
 
+            var roots = new List<string>(DefaultForbiddenTargets);
             string forbidden = Environment.GetEnvironmentVariable("RSTC_FORBIDDEN_TARGETS");
             if (!string.IsNullOrWhiteSpace(forbidden))
             {
-                foreach (string raw in forbidden.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                roots.AddRange(forbidden.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            }
+
+            foreach (string raw in roots)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
                 {
-                    string f = Path.GetFullPath(raw.Trim()).TrimEnd('\\');
-                    string d = fullDir.TrimEnd('\\');
-                    if (string.Equals(d, f, StringComparison.OrdinalIgnoreCase) ||
-                        d.StartsWith(f + "\\", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new UsageException("目标位于受保护目录内: " + fullDir);
-                    }
+                    continue;
+                }
+
+                string f = Path.GetFullPath(raw.Trim()).TrimEnd('\\');
+                string d = fullDir.TrimEnd('\\');
+                if (string.Equals(d, f, StringComparison.OrdinalIgnoreCase) ||
+                    d.StartsWith(f + "\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new UsageException("目标位于受保护目录内: " + fullDir);
                 }
             }
 

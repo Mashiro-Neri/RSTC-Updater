@@ -17,7 +17,7 @@
 | `dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release` | exit 0，0 错误 | 本机 SDK 8.0.405 / net48 | exit 0 且 exe 存在 |
 | `RstcUpdater.exe --probe` | exit 0；输出 `java=25`、`assetIndex=34`、`mainClass=net.minecraft.client.main.Main` | 有外网 | 三字段与官方 JSON 一致 |
 | `RstcUpdater.exe --probe --url https://127.0.0.1:9/x` | exit 5；stderr 含 URL 与原因 | 本机 | 非 0 且信息可读 |
-| `RstcUpdater.exe --install <独立临时目录>` | exit 0；`INSTALL_VERIFY=PASS` | 本机 + 外网 | `versions\26.3\26.3.json` 存在；client jar = 41,483,720 B；`assets\indexes\34.json` = 5149 对象；`libraries\*.jar` ≥ 100 |
+| `RstcUpdater.exe --install <独立临时目录>` | exit 0；`INSTALL_VERIFY=PASS` | 本机 + 外网 | `versions\26.3\26.3.json` 存在；client jar = 41,483,720 B；`assets\indexes\34.json` = 5149 对象；`libraries\*.jar` ≥ 74（Windows 客户端规则过滤；用户已确认 q-accept-74） |
 | `scripts\spike\verify-install-26.3.ps1 -GameDir <同一目录>` | 输出 `VERIFY=PASS` | 本机 | exit 0 |
 | 中文表格 | 不错位、不乱码 | Windows 控制台 | 目视 + 文本证据 |
 
@@ -36,7 +36,7 @@
 
 ## 需要用户决定
 
-- 无（L2 安装已获用户原话确认；其余为技术实现）。
+- 无（L2 安装已获用户原话确认；验收口径变更已获用户确认：2026-11-11「确认改 74（Windows 客户端规则）」，来源 q-accept-74）。
 
 ## 证据计划
 
