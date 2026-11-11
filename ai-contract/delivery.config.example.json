@@ -1,0 +1,21 @@
+{
+  "contractVersion": "1.0",
+  "lastVerified": "2026-10-29",
+  "verify": [
+    { "argv": ["pnpm", "typecheck"], "cwd": ".", "timeoutSec": 300, "expectExit": 0 }
+  ],
+  "identity": { "argv": ["node", "scripts/identity.mjs"], "expect": "commit=<HEAD>" },
+  "smoke": { "argv": ["node", "scripts/smoke.mjs"], "asserts": ["user-visible", "data-side-effect", "identity"] },
+  "health": { "url": "http://127.0.0.1:8787/healthz", "expect": "ok" },
+  "backup": { "argv": ["bash", "backup.sh"], "drill": "restore-check" },
+  "migrate": { "argv": ["bash", "migrate.sh"], "verify": "artifact-migrations == repo && db.schema_migrations == artifact" },
+  "logs": { "path": "logs/", "timezone": "UTC", "terminalEvents": true },
+  "deploy": { "argv": ["bash", "deploy.sh"], "requiresApproval": "L2" },
+  "rollback": { "argv": ["bash", "rollback.sh"], "drill": "L2-dry-run" },
+  "highRiskPaths": [
+    "**/migrations/**", "**/auth/**", "**/permissions/**", "**/secrets/**",
+    "**/deploy/**", "**/config/**", "**/data/**"
+  ],
+  "neverTouch": ["prod/data/**"],
+  "evidenceDir": "evidence/"
+}
