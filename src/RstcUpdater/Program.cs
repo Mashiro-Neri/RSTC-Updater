@@ -25,6 +25,7 @@ namespace RstcUpdater
         private const string DefaultManifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
         private const string TargetVersion = "26.3";
         private const int ExpectedAssetObjects = 5149;
+        private const int ExpectedClientLibraries = 74; // 26.3 按 Windows 客户端规则过滤后的 artifact 数（2026-11-11 实测）
         private const long ExpectedClientJarSize = 41483720L;
 
         private const int ExitOk = 0;
@@ -215,7 +216,7 @@ namespace RstcUpdater
             string gameDir = Path.GetFullPath(options.GameDir);
             try
             {
-                EnsureTargetAllowed(gameDir);
+                EnsureTargetAllowed(gameDir, options.Reuse);
             }
             catch (UsageException ex)
             {
@@ -229,6 +230,7 @@ namespace RstcUpdater
             AnsiConsole.MarkupLine("说明: 不下载 Java 运行时（产品语义：只检测），仅安装游戏本体/库/资源。");
 
             var stopwatch = Stopwatch.StartNew();
+            long beforeBytes = GetDirectorySize(gameDir);
             int files = 0;
             int totalFiles = 0;
             long lastBytes = 0;
@@ -306,11 +308,38 @@ namespace RstcUpdater
             }
 
             stopwatch.Stop();
+            long afterBytes = GetDirectorySize(gameDir);
             AnsiConsole.MarkupLine("");
             AnsiConsole.MarkupLine("[green]安装完成[/] 耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
-                                   "，下载/写入 " + (lastBytes / 1048576.0).ToString("F1") + " MB");
+                                   "，本次新增 " + ((afterBytes - beforeBytes) / 1048576.0).ToString("F1") +
+                                   " MiB（目录总量 " + (afterBytes / 1048576.0).ToString("F1") + " MiB）");
 
             return VerifyInstall(gameDir);
+        }
+
+        private static long GetDirectorySize(string dir)
+        {
+            if (!Directory.Exists(dir))
+            {
+                return 0;
+            }
+
+            long total = 0;
+            foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    total += new FileInfo(file).Length;
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+
+            return total;
         }
 
         private static MinecraftLauncher CreateLauncher(string gameDir, HttpClient http)
@@ -381,7 +410,7 @@ namespace RstcUpdater
             int libCount = Directory.Exists(libDir)
                 ? Directory.EnumerateFiles(libDir, "*.jar", SearchOption.AllDirectories).Count()
                 : 0;
-            bool libOk = libCount >= 100;
+            bool libOk = libCount >= ExpectedClientLibraries;
             checks.AddRow("libraries/*.jar", libOk ? "[green]OK[/]" : "[red]不足[/]", libCount + " 个 jar");
             allOk &= libOk;
 
@@ -401,7 +430,7 @@ namespace RstcUpdater
             return ExitInstallVerifyFailed;
         }
 
-        private static void EnsureTargetAllowed(string fullDir)
+        private static void EnsureTargetAllowed(string fullDir, bool reuse)
         {
             if (!Path.IsPathRooted(fullDir))
             {
@@ -423,9 +452,9 @@ namespace RstcUpdater
                 }
             }
 
-            if (Directory.Exists(fullDir) && Directory.EnumerateFileSystemEntries(fullDir).Any())
+            if (!reuse && Directory.Exists(fullDir) && Directory.EnumerateFileSystemEntries(fullDir).Any())
             {
-                throw new UsageException("目标目录非空（阶段 0 只允许空目录）: " + fullDir);
+                throw new UsageException("目标目录非空（阶段 0 只允许空目录；复用/续跑请加 --reuse）: " + fullDir);
             }
         }
 
@@ -467,19 +496,26 @@ namespace RstcUpdater
                 throw new UsageException("--install 需要目标目录");
             }
 
-            if (args.Length > 2)
+            var options = new InstallOptions { GameDir = args[1] };
+            for (int i = 2; i < args.Length; i++)
             {
-                throw new UsageException("--install 只接受一个目标目录");
+                if (args[i] == "--reuse")
+                {
+                    options.Reuse = true;
+                    continue;
+                }
+
+                throw new UsageException("--install 不认识的参数: " + args[i]);
             }
 
-            return new InstallOptions { GameDir = args[1] };
+            return options;
         }
 
         private static void PrintUsage()
         {
             Console.Error.WriteLine("用法:");
             Console.Error.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
-            Console.Error.WriteLine("  RstcUpdater.exe --install <空的绝对目录>   # 阶段 0 验证：安装原版 26.3，不下载 Java");
+            Console.Error.WriteLine("  RstcUpdater.exe --install <空的绝对目录> [--reuse]   # 阶段 0 验证：安装原版 26.3，不下载 Java；--reuse 允许续跑/复用已有目录");
             Console.Error.WriteLine("  RstcUpdater.exe --help");
             Console.Error.WriteLine("");
             Console.Error.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");
@@ -516,6 +552,7 @@ namespace RstcUpdater
         private sealed class InstallOptions
         {
             public string GameDir;
+            public bool Reuse;
         }
 
         private sealed class UsageException : Exception

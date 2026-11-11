@@ -411,17 +411,19 @@
 
 ### 4.5 空间预检（已核实数值）
 
-| 项 | 大小 |
+| 项 | 大小（实测，2026-11-11） |
 |---|---|
-| 26.3 client jar | 41.5 MB |
-| 26.3 libraries | 116.6 MB（114 个 artifact） |
-| 26.3 assets | 487.4 MB（5149 个对象，索引 `34`） |
-| 原版合计 | **约 646 MB** |
-| 整合包 zip | 581.6 MB |
-| 包展开后 | 约 580 MB |
-| 备份（只备份被覆盖/删除的文件） | 最坏约 580 MB |
+| 26.3 client jar | 41,483,720 B（约 39.6 MiB） |
+| 26.3 libraries | 74 个 jar / 83.7 MiB（按 Windows 客户端规则过滤；版本 json 共 114 个 artifact，含其他平台/服务端） |
+| 26.3 assets | 5149 个对象 / 465.4 MiB（索引 `34`） |
+| 原版合计 | **588.9 MiB / 5228 个文件**（无 `runtime/`，确认未下载 Java） |
+| 整合包 zip | 609,837,724 B（581.6 MiB） |
+| 包展开后 | 约 580 MiB |
+| 备份（只备份被覆盖/删除的文件） | 最坏约 580 MiB |
 
-**峰值**（zip + 解压 + 备份同时存在）约 **2.4 GB**；稳态约 1.25 GB。预检阈值取 **3 GB**，确认页分项显示，并按目标卷（不是系统盘）的剩余空间判定。
+**峰值**（zip + 解压 + 备份 + 原版同时存在）约 **2.3 GiB**；稳态约 1.15 GiB。预检阈值取 **3 GiB**，确认页分项显示，并按目标卷（不是系统盘）的剩余空间判定。
+
+**实测**：全新安装 26.3 原版耗时 2 分 18 秒、下载/写入 588 MB，3 个验签项全部通过（版本 json、client jar、asset index 5149 对象、74 个库）。
 
 ### 4.6 隐私
 
@@ -468,7 +470,9 @@
 
 **GitHub 上 CmlLib 只有 v4.0.4 tag**，4.1.0 源码不可对照，接口细节以 NuGet 包内 DLL 与阶段 0 spike 为准。
 
-**net48 产物代价**（已核实依赖树）：`System.Text.Json` + `System.Text.Encodings.Web` + `System.Memory` + `System.Buffers` + `System.Numerics.Vectors` + `System.Runtime.CompilerServices.Unsafe` + `Microsoft.Bcl.AsyncInterfaces` + `System.Threading.Tasks.Extensions` + `Microsoft.Bcl.TimeProvider` + SharpZipLib + LZMA-SDK。LZMA-SDK 是**原生 DLL**，可能是 x86/x64 分开的——直接决定"单文件"能否成立（§6.7）。
+**net48 产物代价**（已核实依赖树）：`System.Text.Json` + `System.Text.Encodings.Web` + `System.Memory` + `System.Buffers` + `System.Numerics.Vectors` + `System.Runtime.CompilerServices.Unsafe` + `Microsoft.Bcl.AsyncInterfaces` + `System.Threading.Tasks.Extensions` + `Microsoft.Bcl.TimeProvider` + SharpZipLib + LZMA-SDK（其 `SevenZip.dll` 为**托管 AnyCPU，非原生**；PE 检查 ILOnly）。**阶段 0 实装产物**：`RstcUpdater.exe` + `RstcUpdater.exe.config`（binding redirects）+ 16 个 DLL，共 19 个文件。
+
+**CmlLib 4.x 实际 API（源码核对 master，2026-11-11）**：`MinecraftLauncher.InstallAsync(versionName, ct)`；`MinecraftLauncherParameters.CreateDefault` 默认使用 `MojangJsonVersionLoaderV2` + `ParallelGameInstaller.CreateAsCoreCount`（**默认并行下载**，并发 = CPU 核数）+ `DefaultFileExtractors`（含 `JavaFileExtractor`，见 §6.3）。
 
 **本项目自研的三块**（CmlLib 不提供或不打算用）：
 
@@ -494,6 +498,8 @@
 
 CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不够用。
 
+**安装器默认会下 Java（重要）**：`DefaultFileExtractors` 含 `JavaFileExtractor`，`InstallAsync` 会顺带安装 Mojang 的 `java-runtime-epsilon`（26.3 → Java 25）。这违反"不下载 Java，只检测"，实现时必须显式移除该 extractor（阶段 0 已按此实现：自建 `MinecraftLauncherParameters`，把 `DefaultFileExtractors.Java` 置空）。
+
 ### 6.4 版本与分支判定
 
 - **新旧**：按 Release 的 `published_at`，不按版本号字符串（6.4.7 那条 Release 内容实为 5.x，已核实存在：tag `v20260719-191154`）。
@@ -505,6 +511,8 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 1. **GitHub 资产**：沿用 v4 的 5 个镜像与测速参数（预热 128 KB、采样上限 3 MB / 2 秒、重试 3 次），并改为**按文件回退**。
 2. **Mojang / Fabric 资源**：Mojang 官方 + BMCLAPI（已实测 26.3 version json 与 Fabric profile 可用；资源索引 `/assets/34.json` 404，需用官方或另测其他路径）。
+
+**本机实测（2026-11-11）**：官方 client.jar 8 MB Range = 1.35 MB/s；BMCLAPI 跟随 302 后仅 67 KB/s（30 s 只下 2.03 MB），且 `/assets/34.json` 404。结论：**默认官方源，BMCLAPI 仅作失败备用，且不用于索引**。
 
 接法：替换 `LibraryServer` / `AssetServer`，并用自定义 `IVersionLoader` 与 `HttpClient` 改写 URL。**只影响安装期的下载，不改共享的 `26.3.json`，也不把镜像 URL 写进实例 json**——原方案"改实例 json 保留原始 URL 作为回退"在启动器侧不成立（启动器失败即失败，没有逐 URL 回退），已删除。
 
@@ -524,7 +532,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 ### 6.7 产物形态（阶段 0 定）
 
-候选：exe + 若干 DLL（默认）或 Costura/ILMerge 单文件。判定因素：LZMA 原生 DLL 是否必须随行、是否 x64-only、体积、杀软误报率。Spike 通过标准见 §9。
+候选：exe + 若干 DLL（默认）或 Costura/ILMerge 单文件。**阶段 0-1 实测**：产物 = `RstcUpdater.exe`（约 11 KB）+ `RstcUpdater.exe.config` + 16 个 DLL（含托管 `SevenZip.dll`），19 个文件；未发现原生 x86/x64 DLL。单文件（Costura/ILMerge）未实测；`.exe.config` 的 binding redirects 在 .NET Framework 下是必需的，合并需额外处理。杀软误报率未测。
 
 ---
 
@@ -601,7 +609,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 | # | Spike | 通过标准 |
 |---|---|---|
-| 0-1 | .NET Framework 4.8 控制台 + CmlLib 4.1.0 + Spectre 0.57.2，安装 26.3 原版 | 能装出 `versions/26.3/`、`assets/indexes/34.json`；产物列出全部 DLL；中文界面不错位 |
+| 0-1 | .NET Framework 4.8 控制台 + CmlLib 4.1.0 + Spectre 0.57.2，安装 26.3 原版 | 能装出 `versions/26.3/26.3.json`、client jar = 41,483,720 B、`assets/indexes/34.json`（5149 对象）、`libraries/*.jar` ≥ 100；产物列出全部 DLL；中文界面不错位；证据绑定 commit |
 | 0-2 | 实例 json 三方案（A2/A1/B）各做一份 | PCL2 与 HMCL 都能列出并启动；记录哪份能启动、启动日志差异 |
 | 0-3 | 隔离配置写入（不依赖包内 `PCL/`） | PCL2 读到 `VersionArgumentIndieV2:True` 后 mod 生效；HMCL 读到 `gameDirType` 后 mod 生效；已存在的配置不被破坏；包内无 `PCL/` 时新装实例也能生效 |
 | 0-4 | 5.5 真实包安装 | 完整跑通下载→校验→解压→写入→自检；记录耗时与峰值空间 |
@@ -614,6 +622,21 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 1. `RSTC-5.5.zip`（真实包，1.21.10）——验证完整安装链路；本机需先装 Java 21；
 2. `pack-min` / `pack-min-v2`（手工构造，26.3，几个文件，增删各一处）——验证更新/删除清单/保留勾选；
 3. 本机 `versions/26.3-Fabric`（6.0 试验田，121 mods）——结构对照与复用验证，**只读，不修改**。
+
+### 9.1 进度（2026-11-11）
+
+| 项 | 状态 | 证据 |
+|---|---|---|
+| 0-1 工具链 + 元数据探针 | 已通过独立复跑（第 1 轮审查 FAIL 的 R-02/R-03/R-06/R-07/R-08 已修） | `evidence/stage0/net48-probe/085bb8f…/`（commit、SHA256SUMS、facts） |
+| 0-1 真实安装 26.3 | 执行中（L2，用户已确认范围：仅临时目录） | `evidence/stage0/install-26.3/085bb8f…/`；`evidence/stage0/test-minecraft-<ts>/` |
+| 0-2 实例 json 三方案 | 未开始 | — |
+| 0-3 隔离配置写入 | 未开始 | — |
+| 0-4 5.5 真实包安装 | 未开始 | — |
+| 0-5 测试包更新链路 | 未开始 | — |
+| 0-6 复用/并行 | 部分（CmlLib 默认并行已确认，实测待 0-1 warm 复跑） | — |
+| 0-7 v4 手动迁移 | 未开始 | — |
+
+**阶段 0-1 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证。
 
 ---
 

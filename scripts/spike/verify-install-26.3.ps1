@@ -37,8 +37,9 @@ $assetFiles = @(Get-ChildItem -LiteralPath $assetDir -Recurse -File -ErrorAction
 if ($assetFiles.Count -eq 0) { Fail "assets/objects is empty" }
 Ok "assets/objects: $($assetFiles.Count) files"
 
+# 26.3 按 Windows 客户端规则过滤后是 74 个 artifact（2026-11-11 实测），不是版本 json 的 114 个总数
 $libs = @(Get-ChildItem -LiteralPath (Join-Path $GameDir 'libraries') -Recurse -File -Filter *.jar -ErrorAction SilentlyContinue)
-if ($libs.Count -lt 100) { Fail "libraries jar count $($libs.Count) < 100" }
+if ($libs.Count -lt 74) { Fail "libraries jar count $($libs.Count) < 74" }
 Ok "libraries: $($libs.Count) jars"
 
 $total = (Get-ChildItem -LiteralPath $GameDir -Recurse -File | Measure-Object -Property Length -Sum).Sum

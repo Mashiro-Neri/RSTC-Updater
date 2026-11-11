@@ -5,7 +5,7 @@
 ## 1. 项目是什么
 
 - 目标用户 / 唯一核心价值：红石镇客户端玩家。从空目录装出可启动的「Minecraft 26.3 + Fabric + 整合包」实例，并能整包更新、迁移旧实例玩家数据。唯一价值是**装得上、玩得了**。
-- 语言/框架/入口：C# 控制台；目标框架 `.NET Framework 4.8`；入口 `src/RstcUpdater/Program.cs`（阶段 0 骨架）。
+- 语言/框架/入口：C# 控制台；目标框架 `.NET Framework 4.8`（本机实测运行在 4.8.1 / Release 533325）；入口 `src/RstcUpdater/Program.cs`。
 - 运行方式：Windows 10/11 本机双击 `.bat` 拉起程序；无服务端。
 
 ## 2. 命令
@@ -16,7 +16,8 @@
 | build | `dotnet build src/RstcUpdater/RstcUpdater.csproj -c Release` | 2026-11-11 通过（0 警告 0 错误） |
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
 | test | 待建 | — |
-| smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/20261111_205015 |
+| smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/085bb8f7cd2b3166fe5c3cc424fd23ce7925929b |
+| install-test | `RstcUpdater.exe --install <空目录>` | 2026-11-11 L2 执行中（仅临时目录） |
 | deploy / rollback | N/A（阶段 0 无部署） | — |
 
 ## 3. 运行与部署身份
@@ -40,7 +41,7 @@
 
 ## 6. 约定与坑
 
-- 目录/命名/错误/日志/测试风格：代码在 `src/RstcUpdater/`；证据在 `evidence/<task>/<commit>/`；文档在 `requirements/`；错误码用退出码 0/2/3/4，日志 `update_log_<ts>.txt`。
+- 目录/命名/错误/日志/测试风格：代码在 `src/RstcUpdater/`；证据在 `evidence/<task>/<commit>/`；文档在 `requirements/`；退出码 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消；日志 `update_log_<ts>.txt`。
 - 已知噪音、历史事故→必须检查：NuGet 走国内镜像可能慢；GitHub 资产下载易超时（已多次踩到）；Spectre 在 net48 下 CJK 宽度需自测；v4.11 自更新要求 release 同时含 ps1+bat。
 - UNKNOWN / 待确认：HMCL `gameDirType` 枚举、PCL `Setup.ini` 最小字段集、`jar:"26.3"` 兼容性、`-DFabricMcEmu` 是否必需。
 

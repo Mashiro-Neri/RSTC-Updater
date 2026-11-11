@@ -14,7 +14,8 @@ Set-Location $RepoRoot
 
 $full = [System.IO.Path]::GetFullPath($GameDir)
 $commit = (git rev-parse HEAD).Trim()
-$dir = Join-Path $RepoRoot "evidence\stage0\install-26.3\$commit"
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$dir = Join-Path $RepoRoot "evidence\stage0\install-26.3\$commit\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 
 if (-not $env:RSTC_FORBIDDEN_TARGETS) {
@@ -32,11 +33,15 @@ $sw.Stop()
     Tee-Object -FilePath (Join-Path $dir 'verify.cold.txt') -Encoding utf8
 $verifyExit = $LASTEXITCODE
 
-# warm 复跑：同目录再装一次，应跳过已存在文件
+# warm 复跑：同目录再装一次（--reuse），应跳过已存在文件
 $sw2 = [System.Diagnostics.Stopwatch]::StartNew()
-& $exe --install $full 2>&1 | Tee-Object -FilePath (Join-Path $dir 'install.warm.txt') -Encoding utf8
+& $exe --install $full --reuse 2>&1 | Tee-Object -FilePath (Join-Path $dir 'install.warm.txt') -Encoding utf8
 $warmExit = $LASTEXITCODE
 $sw2.Stop()
+
+& (Join-Path $RepoRoot 'scripts\spike\verify-install-26.3.ps1') -GameDir $full 2>&1 |
+    Tee-Object -FilePath (Join-Path $dir 'verify.warm.txt') -Encoding utf8
+$verifyWarmExit = $LASTEXITCODE
 
 $facts = @()
 $facts += "commit=$(git rev-parse HEAD)"
@@ -46,6 +51,7 @@ $facts += "install_cold_seconds=$([math]::Round($sw.Elapsed.TotalSeconds, 1))"
 $facts += "verify_cold_exit=$verifyExit"
 $facts += "install_warm_exit=$warmExit"
 $facts += "install_warm_seconds=$([math]::Round($sw2.Elapsed.TotalSeconds, 1))"
+$facts += "verify_warm_exit=$verifyWarmExit"
 $facts += 'os=' + ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName) +
           ' build ' + ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild)
 $facts += 'time=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')
