@@ -633,14 +633,30 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | **已通过第 3 轮独立审查（PASS）**，待用户验收 | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
 | 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
-| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库；条件 JVM 参数 3 个 rules 对象保留；脚本可复跑），待 A1b 启动验收 | `evidence/stage0/provision-0-2/e9c248a…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
+| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库；条件 JVM 参数 3 个 rules 对象保留；脚本可复跑），待 A1b 启动验收 | `evidence/stage0/provision-0-2/b5bb95b…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
 | 0-3 隔离配置写入 | **已实现“只补键、不覆盖”并实测**：PCL 自定义键保留 + 隔离键 upsert；HMCL 已存在只读不改；待启动生效验证 | 同上 |
-| 0-4 5.5 真实包安装 | **已通过完整链路（22 条断言）**：`--fetch-pack` 下载 609,837,724 B / 82.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422** → Tag 保留（幂等/玩家数据更新后仍为 Tag）→ 玩家数据保护；**峰值实测 1,238,372,352 B** | `evidence/stage0/pack-0-4/e9c248a…/` |
-| 0-5 测试包更新链路 | **已通过（47 条断言）**：A6/A7 + D1（中断注入→journal→可证伪回滚→重跑）+ D2（dry-run 不写盘）+ D3（干净目录 4 次更新留 3 份）+ H5（备份缺失时回滚 fail-closed、Trim 保护失败备份）+ M3（包内启动器配置/DH 文件保护） | `evidence/stage0/pack-0-5/e9c248a…/`（第 3 版） |
+| 0-4 5.5 真实包安装 | **已通过完整链路（22 条断言）**：`--fetch-pack` 下载 609,837,724 B / 82.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422** → Tag 保留（幂等/玩家数据更新后仍为 Tag）→ 玩家数据保护；**峰值实测 1,238,372,352 B** | `evidence/stage0/pack-0-4/b5bb95b…/` |
+| 0-5 测试包更新链路 | **已通过（47 条断言）**：A6/A7 + D1（中断注入→journal→可证伪回滚→重跑）+ D2（dry-run 不写盘）+ D3（干净目录 4 次更新留 3 份）+ H5（备份缺失时回滚 fail-closed、Trim 保护失败备份）+ M3（包内启动器配置/DH 文件保护） | `evidence/stage0/pack-0-5/b5bb95b…/`（第 3 版） |
 | 0-6 复用/并行 | **PARTIAL**：复用已实测（CmlLib warm 0 增量；pack 幂等 422 全复用）；并行由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数），**未做 A/B 量化** | 0-1/0-4 证据 |
 | 0-7 v4 手动迁移 | **指南已产出**：`requirements/v4到v5迁移指南.md`（含 v4 自更新坑与占位资产方案、回滚）；待 v5 Release 后用户实测 | — |
 
 **阶段 0 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证；⑤ 5.5 实包 overrides 顶层含 `PCL/` 与 `resourcepacks/`、`shaderpacks/`（原文档只列 4 项，已更正；`PCL/` 由更新器跳过）。
+
+### 9.2 阶段 0 结论（2026-11-11，代码 commit `b5bb95b`）
+
+| 项 | 结论 | 状态 |
+|---|---|---|
+| 0-1 | 工具链 + 真实安装 26.3 通过（3 轮独立审查） | **PASS** |
+| 0-2 | A2/A1/B 结构通过；A1b 启动验收未做 | PASS（结构）/ awaiting-user |
+| 0-3 | 启动器配置只补键、不覆盖，实测通过 | PASS（结构）/ awaiting-user |
+| 0-4 | 下载→sha256→应用→逐文件 422/422→峰值实测 | **PASS** |
+| 0-5 | 47 条断言（含 H5/M3/M11 回归） | **PASS** |
+| 0-6 | 复用 PASS；并行未量化 | PARTIAL（按 §9 通过标准“明确放弃量化”） |
+| 0-7 | 迁移指南已产出；v5 Release 实测未做 | awaiting-user |
+
+**独立审查**：0-1 经 3 轮 PASS；0-2…0-7 经 3 轮审查，第 3 轮 PASS（`evidence/stage0/review/20261111_2308/`）。
+**对外状态**：`demo-awaiting-user`（A1b 与 0-7 需用户实测；不得标 verified）。
+**下一步**：V1 实现（安装 / 整包更新 / 自更新 / 白名单迁移 / 关键文件检查 + 交互菜单）。
 
 ---
 
