@@ -16,6 +16,7 @@
 | build | `dotnet build src/RstcUpdater/RstcUpdater.csproj -c Release` | 2026-11-11 通过（0 警告 0 错误） |
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
 | test | `pwsh -File scripts/v1/smoke.ps1 -GameDir <有 26.3 的临时目录>` | 2026-11-12 **30/30 PASS**（安装/更新/迁移/自更新检查/状态） |
+| test-menu | `pwsh -File scripts/v1/menu-smoke.ps1 -GameDir <同上>` | 2026-11-12 **8/8 PASS**（`--menu-script` 驱动真实菜单：安装/检查/迁移/自更新/退出） |
 | smoke | `RstcUpdater.exe --status [游戏目录]` | 2026-11-12 非交互状态面板 exit 0 |
 | install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB |
 | v1-install | `RstcUpdater.exe --install-v1 <游戏目录> [--instance <名>] [--zip <本地包>]` | 2026-11-12 夹具包成功；Release 路径在 6.0 前正确拦截 5.5（exit 5，不建实例） |

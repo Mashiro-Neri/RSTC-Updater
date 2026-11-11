@@ -678,6 +678,8 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **V1 端到端冒烟（30 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 合法 index 的越界 zip 被拒（exit 7、实例哈希不变、无越界写盘）→ 隔离检测按实际值 → 迁移默认拒绝覆盖 / 显式覆盖前备份 / 两个 `XaeroWaypoints*` 都迁移 / 源不动 / 内容哈希一致 → **目标只读时迁移失败自动回滚（exit 2，目标哈希恢复）** → 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
 
+**V1 菜单脚本化验收（8 条断言，`scripts/v1/menu-smoke.ps1`）**：用 `--menu-script` 驱动真实菜单动作——安装到新目录（夹具包）→ 检查关键文件 → 从旧实例迁移（存档）→ 检查更新器更新 → 退出，全部通过；菜单输入的测试钩子只在脚本文件/`RSTC_MENU_SCRIPT` 存在时启用，正常双击行为不变。证据：`evidence/v1/menu-smoke/<commit>/`。
+
 **复审加固（R2）**：迁移异常自动回滚（恢复被覆盖、删除新建）；自更新备份任一文件失败即中止；替换失败保留备份并记录错误；菜单新增「回滚未完成更新」；多实例时状态标注数量。
 
 ---
