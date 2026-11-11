@@ -86,7 +86,20 @@ namespace RstcUpdater
                             throw new UsageException("--menu-script 需要脚本文件路径");
                         }
 
-                        return await Menu.RunAsync(args[1]);
+                        try
+                        {
+                            return await Menu.RunAsync(args[1]);
+                        }
+                        catch (FlowFailureException ex)
+                        {
+                            Console.Error.WriteLine(ex.Message);
+                            return ex.Code;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine("菜单失败: " + ex.GetType().Name + ": " + ex.Message);
+                            return 7;
+                        }
                     case "--help":
                     case "-h":
                         PrintUsage(Console.Out);

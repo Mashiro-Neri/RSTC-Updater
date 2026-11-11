@@ -76,8 +76,22 @@ Check '实例已创建' (Test-Path -LiteralPath $instanceDir)
 Check '关键文件检查执行' ($out -match '关键文件检查')
 Check '迁移完成' ($out -match '迁移完成')
 Check '迁移复制 1 个存档' (Test-Path -LiteralPath (Join-Path $instanceDir 'saves\world.dat'))
-Check '自更新检查执行' ($out -match '已是最新版本')
+Check '自更新检查执行（表已渲染）' ($out -match '更新器自更新' -and $out -match '当前版本')
 Check '正常退出（无脚本用尽错误）' ($out -notmatch '菜单脚本输入用尽')
+
+# ---------- 负向：脚本缺失/为空/中途耗尽都应 exit 2，且不能是 CLR 异常负码 ----------
+$missing = & $exe --menu-script (Join-Path $dir 'no-such-script.txt') 2>&1 | Out-String
+Check '缺脚本文件 exit 2' ($LASTEXITCODE -eq 2) "exit=$LASTEXITCODE"
+$emptyScript = Join-Path $dir 'menu-empty.txt'
+Set-Content -LiteralPath $emptyScript -Value '' -Encoding utf8
+$emptyRun = & $exe --menu-script $emptyScript 2>&1 | Out-String
+Check '空脚本 exit 2' ($LASTEXITCODE -eq 2) "exit=$LASTEXITCODE"
+$shortScript = Join-Path $dir 'menu-short.txt'
+Set-Content -LiteralPath $shortScript -Value '检查关键文件' -Encoding utf8
+$shortRun = & $exe --menu-script $shortScript 2>&1 | Out-String
+Check '脚本中途耗尽 exit 2' ($LASTEXITCODE -eq 2) "exit=$LASTEXITCODE"
+Check '耗尽错误信息可读' ($shortRun -match '菜单脚本输入用尽')
+($missing + "`n" + $emptyRun + "`n" + $shortRun) | Out-File -FilePath (Join-Path $dir 'menu-negative.txt') -Encoding utf8
 
 $facts = @()
 $facts += "commit=$commit"

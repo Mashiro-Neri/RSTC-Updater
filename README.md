@@ -51,6 +51,8 @@ src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --update-v1 <游戏目录> --i
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings]   # 迁移玩家数据
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --check-self   # 检查更新器自身更新
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --menu-script <脚本>   # 用脚本输入驱动菜单（测试/自动化）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 ```

@@ -27,15 +27,8 @@ namespace RstcUpdater
             await Task.Yield();
             if (!string.IsNullOrEmpty(scriptPath))
             {
+                // 仅 --menu-script 显式入口启用脚本模式（不影响正常双击）
                 LoadScript(scriptPath);
-            }
-            else
-            {
-                string envScript = Environment.GetEnvironmentVariable("RSTC_MENU_SCRIPT");
-                if (!string.IsNullOrEmpty(envScript))
-                {
-                    LoadScript(envScript);
-                }
             }
 
             Console.OutputEncoding = Encoding.UTF8;
@@ -89,6 +82,11 @@ namespace RstcUpdater
                             config.Save();
                             return 0;
                     }
+                }
+                catch (FlowFailureException)
+                {
+                    // 脚本输入错误/耗尽：中止菜单并让调用方以对应退出码结束
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -355,10 +353,21 @@ namespace RstcUpdater
 
         private static void LoadScript(string path)
         {
-            _script = new Queue<string>(
-                File.ReadAllLines(path, Encoding.UTF8)
-                    .Where(l => !string.IsNullOrWhiteSpace(l) && !l.TrimStart().StartsWith("#"))
-                    .Select(l => l.Trim()));
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                throw new FlowFailureException(2, "菜单脚本不存在: " + path);
+            }
+
+            var lines = File.ReadAllLines(path, Encoding.UTF8)
+                .Where(l => !string.IsNullOrWhiteSpace(l) && !l.TrimStart().StartsWith("#"))
+                .Select(l => l.Trim())
+                .ToList();
+            if (lines.Count == 0)
+            {
+                throw new FlowFailureException(2, "菜单脚本为空: " + path);
+            }
+
+            _script = new Queue<string>(lines);
         }
 
         private static string NextScript(string what)
@@ -379,8 +388,16 @@ namespace RstcUpdater
             }
 
             string answer = NextScript(title);
-            string match = choices.FirstOrDefault(c => string.Equals(c, answer, StringComparison.OrdinalIgnoreCase))
-                           ?? choices.FirstOrDefault(c => c.IndexOf(answer, StringComparison.OrdinalIgnoreCase) >= 0);
+            string match = choices.FirstOrDefault(c => string.Equals(c, answer, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+            {
+                var contains = choices.Where(c => c.IndexOf(answer, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                if (contains.Count == 1)
+                {
+                    match = contains[0];
+                }
+            }
+
             if (match == null)
             {
                 throw new FlowFailureException(2, "菜单脚本选择不在选项内: " + answer + "（" + title + "）");
@@ -406,8 +423,13 @@ namespace RstcUpdater
             foreach (string part in answer.Split(','))
             {
                 string token = part.Trim();
-                string match = choices.FirstOrDefault(c => string.Equals(c, token, StringComparison.OrdinalIgnoreCase))
-                               ?? choices.FirstOrDefault(c => c.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0);
+                string match = choices.FirstOrDefault(c => string.Equals(c, token, StringComparison.OrdinalIgnoreCase));
+                if (match == null)
+                {
+                    var contains = choices.Where(c => c.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                    match = contains.Count == 1 ? contains[0] : null;
+                }
+
                 if (match != null)
                 {
                     result.Add(match);
@@ -432,9 +454,13 @@ namespace RstcUpdater
         {
             if (!ScriptMode)
             {
-                return AnsiConsole.Prompt(new TextPrompt<string>(message)
-                    .DefaultValue(defaultValue ?? "")
-                    .AllowEmpty());
+                var prompt = new TextPrompt<string>(message).DefaultValue(defaultValue ?? "");
+                if (allowEmpty)
+                {
+                    prompt = prompt.AllowEmpty();
+                }
+
+                return AnsiConsole.Prompt(prompt);
             }
 
             string answer = NextScript(message);

@@ -282,7 +282,7 @@ namespace RstcUpdater
             {
                 int restored = RestoreFromBackup(backupRoot, target);
                 int removed = RemoveCreated(createdFiles);
-                RemoveEmptyDirs(createdDirs);
+                RemoveEmptyDirs(createdDirs, target);
                 summary = "迁移失败: " + ex.GetType().Name + ": " + ex.Message +
                           "；已回滚（恢复 " + restored + " 个被覆盖文件，删除 " + removed + " 个新建文件）";
                 if (!string.IsNullOrEmpty(backupRoot) && Directory.Exists(backupRoot))
@@ -364,19 +364,26 @@ namespace RstcUpdater
             return removed;
         }
 
-        private static void RemoveEmptyDirs(List<string> createdDirs)
+        private static void RemoveEmptyDirs(List<string> createdDirs, string target)
         {
+            string targetFull = Path.GetFullPath(target).TrimEnd('\\');
             foreach (string dir in createdDirs.OrderByDescending(d => d.Length))
             {
-                try
+                string current = dir;
+                while (current.Length > targetFull.Length &&
+                       Directory.Exists(current) &&
+                       !Directory.EnumerateFileSystemEntries(current).Any())
                 {
-                    if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+                    try
                     {
-                        Directory.Delete(dir);
+                        Directory.Delete(current);
                     }
-                }
-                catch (Exception)
-                {
+                    catch (Exception)
+                    {
+                        break;
+                    }
+
+                    current = Path.GetDirectoryName(current);
                 }
             }
         }
