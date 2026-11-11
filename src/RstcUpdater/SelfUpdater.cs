@@ -189,6 +189,14 @@ namespace RstcUpdater
             if (backupFailures > 0)
             {
                 Console.Error.WriteLine("自更新中止：有 " + backupFailures + " 个文件无法备份（可能被占用），为避免无法回滚不执行替换。");
+                try
+                {
+                    Directory.Delete(tempBase, true);
+                }
+                catch (Exception)
+                {
+                }
+
                 return 7;
             }
 

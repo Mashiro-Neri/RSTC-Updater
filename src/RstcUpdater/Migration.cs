@@ -172,6 +172,12 @@ namespace RstcUpdater
             string target = Path.Combine(gameDir, "versions", toInstance);
             var lines = new List<string>();
 
+            if (!PackApplier.IsSafeInstanceName(fromInstance) || !PackApplier.IsSafeInstanceName(toInstance))
+            {
+                summary = "实例名不合法（不能含路径分隔符/盘符/保留名）: " + fromInstance + " -> " + toInstance;
+                return false;
+            }
+
             if (!Directory.Exists(source))
             {
                 summary = "源实例不存在: " + source;
@@ -210,6 +216,7 @@ namespace RstcUpdater
             int files = 0;
             long bytes = 0;
             var createdFiles = new List<string>();
+            var createdDirs = new List<string>();
             try
             {
                 foreach (var category in categories)
@@ -226,7 +233,13 @@ namespace RstcUpdater
                                 {
                                     string rel = file.Substring(src.Length).TrimStart('\\');
                                     string dst = Path.Combine(dstRoot, rel);
-                                    Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? dstRoot);
+                                    string parent = Path.GetDirectoryName(dst) ?? dstRoot;
+                                    if (!Directory.Exists(parent))
+                                    {
+                                        Directory.CreateDirectory(parent);
+                                        createdDirs.Add(parent);
+                                    }
+
                                     bool existed = File.Exists(dst);
                                     File.Copy(file, dst, true);
                                     if (!existed)
@@ -241,7 +254,13 @@ namespace RstcUpdater
                             else if (File.Exists(src))
                             {
                                 string dst = Path.Combine(target, path);
-                                Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
+                                string parent = Path.GetDirectoryName(dst) ?? target;
+                                if (!Directory.Exists(parent))
+                                {
+                                    Directory.CreateDirectory(parent);
+                                    createdDirs.Add(parent);
+                                }
+
                                 bool existed = File.Exists(dst);
                                 File.Copy(src, dst, true);
                                 if (!existed)
@@ -263,8 +282,14 @@ namespace RstcUpdater
             {
                 int restored = RestoreFromBackup(backupRoot, target);
                 int removed = RemoveCreated(createdFiles);
+                RemoveEmptyDirs(createdDirs);
                 summary = "迁移失败: " + ex.GetType().Name + ": " + ex.Message +
                           "；已回滚（恢复 " + restored + " 个被覆盖文件，删除 " + removed + " 个新建文件）";
+                if (!string.IsNullOrEmpty(backupRoot) && Directory.Exists(backupRoot))
+                {
+                    summary += "；备份保留在 " + backupRoot;
+                }
+
                 return false;
             }
 
@@ -337,6 +362,23 @@ namespace RstcUpdater
             }
 
             return removed;
+        }
+
+        private static void RemoveEmptyDirs(List<string> createdDirs)
+        {
+            foreach (string dir in createdDirs.OrderByDescending(d => d.Length))
+            {
+                try
+                {
+                    if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+                    {
+                        Directory.Delete(dir);
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
         }
     }
 }

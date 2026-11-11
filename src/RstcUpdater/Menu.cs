@@ -301,7 +301,14 @@ namespace RstcUpdater
             }
 
             string instDir = Path.Combine(gameDir, "versions", instance);
-            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]关键文件检查: " + Markup.Escape(instance) + "[/]");
+            var all = FindInstances(gameDir);
+            string title = "关键文件检查: " + instance;
+            if (all.Count > 1)
+            {
+                title += "（共 " + all.Count + " 个实例）";
+            }
+
+            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]" + Markup.Escape(title) + "[/]");
             table.AddColumn("项");
             table.AddColumn("状态");
 
