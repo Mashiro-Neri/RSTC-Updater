@@ -423,7 +423,7 @@
 | 包展开后 | 约 580 MiB |
 | 备份（只备份被覆盖/删除的文件） | 最坏约 580 MiB |
 
-**峰值**（zip + 解压 + 备份 + 原版同时存在）约 **2.3 GiB**；稳态约 1.15 GiB。预检阈值取 **3 GiB**，确认页分项显示，并按目标卷（不是系统盘）的剩余空间判定。
+**峰值**（zip + 解压 + 备份 + 原版同时存在）约 **2.3 GiB**；稳态约 1.15 GiB。预检阈值取 **3 GiB**，确认页分项显示，并按目标卷（不是系统盘）的剩余空间判定。**实测**：真实 5.5 包 fetch→应用峰值占用 1,238,372,352 B（1.15 GiB），与"zip 581.6 MiB + 实例 598.7 MiB"的估算一致。
 
 **实测**：全新安装 26.3 原版耗时 2 分 20 秒、新增 588.9 MiB，4 项检查全部通过（版本 json、client jar、asset index 5149 对象、74 个库）；同目录 warm 复跑 3.6 秒、新增 0.0 MiB，证明跳过逻辑有效。
 
@@ -633,10 +633,10 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | **已通过第 3 轮独立审查（PASS）**，待用户验收 | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
 | 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
-| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库；条件 JVM 参数保留），待 A1b 启动验收 | `evidence/stage0/provision-0-2/6f12437…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
-| 0-3 隔离配置写入 | **已实现“只补键、不覆盖”**：PCL 保留自定义键并 upsert 隔离键；HMCL 已存在则只读不改（实测）；待启动生效验证 | 同上 |
-| 0-4 5.5 真实包安装 | **已通过完整链路（18 条断言）**：`--fetch-pack` 下载 609,837,724 B / 79.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422 一致** → 幂等更新 422 复用 → 玩家数据保护；峰值空间估算约 1.24 GB | `evidence/stage0/pack-0-4/6f12437…/` |
-| 0-5 测试包更新链路 | **已通过**（35 条断言）：pack-min→v2 的删除/新增/保留清单/options 冲突/journal/备份保留 3 份；含 D1 中断注入+回滚、D2 dry-run 预览 | `evidence/stage0/pack-0-5/96218d8…/`（初版）、`6f12437…`（第 2 版） |
+| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库；条件 JVM 参数 3 个 rules 对象保留；脚本可复跑），待 A1b 启动验收 | `evidence/stage0/provision-0-2/e9c248a…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
+| 0-3 隔离配置写入 | **已实现“只补键、不覆盖”并实测**：PCL 自定义键保留 + 隔离键 upsert；HMCL 已存在只读不改；待启动生效验证 | 同上 |
+| 0-4 5.5 真实包安装 | **已通过完整链路（22 条断言）**：`--fetch-pack` 下载 609,837,724 B / 82.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422** → Tag 保留（幂等/玩家数据更新后仍为 Tag）→ 玩家数据保护；**峰值实测 1,238,372,352 B** | `evidence/stage0/pack-0-4/e9c248a…/` |
+| 0-5 测试包更新链路 | **已通过（47 条断言）**：A6/A7 + D1（中断注入→journal→可证伪回滚→重跑）+ D2（dry-run 不写盘）+ D3（干净目录 4 次更新留 3 份）+ H5（备份缺失时回滚 fail-closed、Trim 保护失败备份）+ M3（包内启动器配置/DH 文件保护） | `evidence/stage0/pack-0-5/e9c248a…/`（第 3 版） |
 | 0-6 复用/并行 | **PARTIAL**：复用已实测（CmlLib warm 0 增量；pack 幂等 422 全复用）；并行由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数），**未做 A/B 量化** | 0-1/0-4 证据 |
 | 0-7 v4 手动迁移 | **指南已产出**：`requirements/v4到v5迁移指南.md`（含 v4 自更新坑与占位资产方案、回滚）；待 v5 Release 后用户实测 | — |
 
