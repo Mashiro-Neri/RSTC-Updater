@@ -51,8 +51,7 @@ namespace RstcUpdater
 
             if (args.Length == 0)
             {
-                PrintUsage(Console.Error);
-                return ExitUsage;
+                return await Menu.RunAsync();
             }
 
             try
@@ -71,6 +70,8 @@ namespace RstcUpdater
                         return Rollback(ParseInstanceOptions(args));
                     case "--fetch-pack":
                         return await FetchPackAsync(ParseFetchOptions(args));
+                    case "--status":
+                        return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
                     case "--help":
                     case "-h":
                         PrintUsage(Console.Out);
@@ -866,6 +867,8 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--tag <Tag>] [--dry-run]");
             writer.WriteLine("  RstcUpdater.exe --fetch-pack <游戏目录> --release-json <文件> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--asset-name <名>] [--keep-zip]");
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
+            writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
+            writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe --help");
             writer.WriteLine("");
             writer.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");

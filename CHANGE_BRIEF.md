@@ -1,47 +1,44 @@
-# 变更开工卡（CHANGE_BRIEF）
+# 变更开工卡（CHANGE_BRIEF）· V1 交互式更新器
 
-> 任务：阶段 0-1 · .NET Framework 4.8 + CmlLib.Core 4.1.0 + Spectre.Console 0.57.2 可行性（含真实安装 26.3） · 日期：2026-11-11 · contractVersion：1.0
+> 任务：V1 · 把阶段 0 的模块串成玩家可用的控制台更新器（安装 / 整包更新 / 自更新 / 白名单迁移 / 关键文件检查） · 日期：2026-11-11 · contractVersion：1.0
 
 ## 目标（用户语言）
 
-- 用户现在能做什么：只能用 v4.11 PowerShell 更新器；v5 尚无可用程序。
-- 本次要让用户看到什么：
-  1. 一个能在 .NET Framework 4.8 上编译运行的控制台程序，能拉到 26.3 元数据并打印关键字段；
-  2. 能用 CmlLib 在**独立临时目录**把原版 26.3 真正装出来（versions/26.3、client jar、assets/indexes/34.json、libraries）。
-- 明确不做（non-goals）：不写实例 json（0-2）、不装 Fabric（0-2）、不碰任何玩家实例（`E:\其他文件\红石镇客户端\**` 只读）、不下载 Java 运行时（产品语义：只检测）。
+- 用户现在能做什么：阶段 0 只有命令行验证模式，玩家无法使用。
+- 本次要让用户看到什么：双击程序 → 状态面板（游戏目录/本地整合包版本/本地 MC 版本/最新版本/Java/启动器隔离）+ 菜单；能完成"安装到新目录"和"整包更新"，能看到删除清单并勾选保留；能迁移旧实例玩家数据；能检查关键文件；能检查更新器自身更新。
+- 明确不做（non-goals）：不启动游戏、不管理账号、不做增量下载、不做 GUI。
 
 ## 验收（可执行）
 
 | 操作/命令 | 期望可观察结果 | 环境 | 通过阈值 |
 |---|---|---|---|
-| `dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release` | exit 0，0 错误 | 本机 SDK 8.0.405 / net48 | exit 0 且 exe 存在 |
-| `RstcUpdater.exe --probe` | exit 0；输出 `java=25`、`assetIndex=34`、`mainClass=net.minecraft.client.main.Main` | 有外网 | 三字段与官方 JSON 一致 |
-| `RstcUpdater.exe --probe --url https://127.0.0.1:9/x` | exit 5；stderr 含 URL 与原因 | 本机 | 非 0 且信息可读 |
-| `RstcUpdater.exe --install <独立临时目录>` | exit 0；`INSTALL_VERIFY=PASS` | 本机 + 外网 | `versions\26.3\26.3.json` 存在；client jar = 41,483,720 B；`assets\indexes\34.json` = 5149 对象；`libraries\*.jar` ≥ 74（Windows 客户端规则过滤；用户已确认 q-accept-74） |
-| `scripts\spike\verify-install-26.3.ps1 -GameDir <同一目录>` | 输出 `VERIFY=PASS` | 本机 | exit 0 |
-| 中文表格 | 不错位、不乱码 | Windows 控制台 | 目视 + 文本证据 |
+| 无参数启动 | 状态面板 + 菜单渲染 | Windows 控制台 | 不崩溃，字段可读 |
+| 「安装到新目录」→ 空临时 .minecraft | 装出 26.3 + Fabric + 整合包实例；完成页给路径/启动步骤 | 临时目录 | 关键文件检查通过 |
+| 「整包更新」→ 已装同 MC 实例 | 显示删除清单，可勾选保留；更新后版本号变化 | 临时目录 | A6/A7 语义 |
+| 「从旧实例迁移」 | 勾选类别复制，源不变 | 临时目录 | 逐文件比对 |
+| 「检查关键文件」 | 列出缺失项 | 临时目录 | 与磁盘一致 |
+| 「检查更新器更新」 | 能读到更新器仓库 Release 并比较版本 | 网络 | 403 时有缓存兜底 |
+| `dotnet build -c Release` | exit 0 | 本机 | 0 警告 0 错误 |
 
 ## 风险
 
-- 风险级别：**元数据探针 L1**（只读网络）；**安装 26.3 L2**（写 `versions/`、`libraries/`、`assets/`，外部下载）。
-- 涉及数据/迁移/权限/部署/外部副作用：安装阶段有外部下载与磁盘写入，仅限独立临时目录。
-- 最坏结果：下载失败/超时、临时目录占用约 1.3 GB；不影响玩家实例与 v4。
-- 回滚方式：删除该临时目录（安装前目标必须为空目录，代码强制校验）。
-- **用户确认（L2）**：2026-11-11，用户原话「继续（范围：仅临时目录安装 26.3，约 646 MB）」。
+- 风险级别：**实现 L1**；在临时目录执行验证 **L2**（用户已确认阶段 0 写操作范围，V1 测试仍只用 `evidence/stage0/test-*`）；**生产环境删除玩家文件 = L3**，必须用户逐项确认 + 备份 + journal（已有实现）。
+- 最坏结果：测试目录被改乱（有备份/journal/回滚）；玩家目录在测试中只读。
+- 回滚：删除测试目录；生产用 `--rollback` 与 `rstc-backup`。
 
 ## 语义与兼容
 
-- 是否有语义变化：新增 v5 命令；v4 完全不动。
-- 旧数据/旧调用方是否兼容：兼容（v4 目录未改）。
+- 玩家可见行为从"无"到"有"，无旧 v5 行为需要兼容；v4 完全不动。
+- 发布包不含 `PCL/`（用户要求，已实现跳过）。
 
 ## 需要用户决定
 
-- 无（L2 安装已获用户原话确认；验收口径变更已获用户确认：2026-11-11「确认改 74（Windows 客户端规则）」，来源 q-accept-74）。
+1. V1 默认实例方案（A2/A1/B）——待 A1b 启动结果；暂按 A2（自包含平铺）。
+2. v5 分发/自更新资产命名——待发布器任务（附录 A），暂按 `RSTC-Updater-<ver>.zip`。
 
 ## 证据计划
 
-- 自检命令：`dotnet build`；`--probe`；`--probe --url`（失败路径）；`--install`；`verify-install-26.3.ps1`。
-- 真实入口/副作用：exe 真实运行；安装产生真实文件与下载。
-- 失败/重启路径：无效 URL（exit 5）；非空目录（exit 2）；已安装目录重跑（warm，应快速跳过已存在文件）。
-- 冷/热性能：首次安装（cold）与第二次运行（warm）的耗时、下载量对比。
-- 证据绑定：`evidence/stage0/<task>/<commit>/`，含 `commit.txt`、`SHA256SUMS`、`ProductVersion`。
+- 自检：build + 每个菜单动作在临时 `.minecraft` 上跑一遍（证据存 `evidence/v1/<task>/<commit>/`）。
+- 真实入口：无参数启动的真实 TUI（录制文本输出）。
+- 失败路径：缺游戏目录、网络 403、实例不存在。
+- 用户验收：安装/更新/迁移各一次截图或原话。
