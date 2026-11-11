@@ -42,6 +42,8 @@ namespace RstcUpdater
                     switch (choice)
                     {
                         case "安装到新目录":
+                            gameDir = await InstallActionAsync(gameDir);
+                            break;
                         case "更新现有实例":
                         case "从旧实例迁移":
                         case "检查更新器更新":
@@ -283,6 +285,66 @@ namespace RstcUpdater
                 : 0;
             table.AddRow("mods/*.jar", mods.ToString());
             AnsiConsole.Write(table);
+        }
+
+        private static async Task<string> InstallActionAsync(string gameDir)
+        {
+            var config = AppConfig.Load();
+            string dir = gameDir;
+            if (string.IsNullOrEmpty(dir))
+            {
+                string input = AnsiConsole.Prompt(
+                    new TextPrompt<string>("游戏目录（.minecraft，留空取消）:").AllowEmpty());
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    return gameDir;
+                }
+
+                dir = Path.GetFullPath(input.Trim().Trim('"'));
+            }
+
+            string name = AnsiConsole.Prompt(
+                new TextPrompt<string>("实例名:").DefaultValue("红石镇客户端"));
+            name = name.Trim();
+            if (!PackApplier.IsSafeInstanceName(name))
+            {
+                AnsiConsole.MarkupLine("[red]实例名不合法（不能含路径分隔符、盘符或保留名）[/]");
+                return gameDir;
+            }
+
+            if (Directory.Exists(Path.Combine(dir, "versions", name)))
+            {
+                AnsiConsole.MarkupLine("[red]同名实例已存在，请换一个名字，或使用「更新现有实例」[/]");
+                return gameDir;
+            }
+
+            var javas = JavaDetector.Detect(dir);
+            bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
+            var info = new Table().Border(TableBorder.Rounded).Title("[cyan]安装确认[/]");
+            info.AddColumn("项");
+            info.AddColumn("值");
+            info.AddRow("游戏目录", Markup.Escape(dir));
+            info.AddRow("实例名", Markup.Escape(name));
+            info.AddRow("预计下载", "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）");
+            info.AddRow("Java", javaOk
+                ? "[green]Java " + RequiredJava + " 已就绪[/]"
+                : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]");
+            AnsiConsole.Write(info);
+
+            if (!AnsiConsole.Confirm("开始安装？", true))
+            {
+                return gameDir;
+            }
+
+            int code = await Installer.InstallFlowAsync(dir, name).ConfigureAwait(false);
+            if (code == 0)
+            {
+                config.LastGameDir = dir;
+                config.LastInstance = name;
+                config.Save();
+            }
+
+            return dir;
         }
 
         private static string Settings(AppConfig config, string currentGameDir)

@@ -46,7 +46,9 @@ src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install <空目录> [--reuse
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods>]   # 阶段 0-2：Fabric + A2/A1/B 实例
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>   # 下载+校验+铺开真实包
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run] [--keep a,b]
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --rollback <游戏目录> --instance <名>   # 按 journal 回滚
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 ```
 
 - 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`

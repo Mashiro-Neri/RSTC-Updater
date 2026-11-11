@@ -27,6 +27,58 @@ namespace RstcUpdater
 
         private static readonly string[] NeverDeletePrefixes = { "XaeroWaypoints", "update_log_" };
 
+        // ==================== 元数据 ====================
+
+        internal sealed class PackMetadata
+        {
+            public string VersionId;
+            public string Minecraft;
+        }
+
+        /// <summary>从 zip 读取 modrinth.index.json 的版本与 MC 依赖。</summary>
+        public static PackMetadata ReadMetadata(string zipPath)
+        {
+            try
+            {
+                using (var zip = ZipFile.OpenRead(zipPath))
+                {
+                    var entry = zip.GetEntry("modrinth.index.json");
+                    if (entry == null)
+                    {
+                        return null;
+                    }
+
+                    string json;
+                    using (var stream = entry.Open())
+                    using (var reader = new StreamReader(stream, Encoding.UTF8))
+                    {
+                        json = reader.ReadToEnd();
+                    }
+
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        var meta = new PackMetadata();
+                        if (doc.RootElement.TryGetProperty("versionId", out var v))
+                        {
+                            meta.VersionId = v.GetString();
+                        }
+
+                        if (doc.RootElement.TryGetProperty("dependencies", out var deps) &&
+                            deps.TryGetProperty("minecraft", out var mc))
+                        {
+                            meta.Minecraft = mc.GetString();
+                        }
+
+                        return meta;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         // ==================== 安装/更新 ====================
 
         public static int Run(PackOptions options)

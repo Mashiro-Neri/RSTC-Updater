@@ -70,6 +70,8 @@ namespace RstcUpdater
                         return Rollback(ParseInstanceOptions(args));
                     case "--fetch-pack":
                         return await FetchPackAsync(ParseFetchOptions(args));
+                    case "--install-v1":
+                        return await InstallV1Async(args);
                     case "--status":
                         return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
                     case "--help":
@@ -246,7 +248,13 @@ namespace RstcUpdater
             }
 
             Directory.CreateDirectory(gameDir);
-            AnsiConsole.Write(new Rule("[cyan]安装 Minecraft " + TargetVersion + "（阶段 0 验证）[/]").RuleStyle("grey"));
+            return await InstallVanillaAsync(gameDir);
+        }
+
+        /// <summary>供 V1 安装流程复用：确保原版 26.3 就绪（也可直接对空目录调用）。</summary>
+        internal static async Task<int> InstallVanillaAsync(string gameDir)
+        {
+            AnsiConsole.Write(new Rule("[cyan]安装 Minecraft " + TargetVersion + "[/]").RuleStyle("grey"));
             AnsiConsole.MarkupLine("目标: [yellow]" + Markup.Escape(gameDir) + "[/]");
             AnsiConsole.MarkupLine("说明: 不下载 Java 运行时（产品语义：只检测），仅安装游戏本体/库/资源。");
 
@@ -675,6 +683,45 @@ namespace RstcUpdater
             public string Instance;
         }
 
+        private static async Task<int> InstallV1Async(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--install-v1 需要游戏目录");
+            }
+
+            string gameDir = args[1];
+            string instance = "红石镇客户端";
+            string localZip = null;
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--instance")
+                {
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new UsageException("--instance 缺少参数");
+                    }
+
+                    instance = args[++i];
+                }
+                else if (args[i] == "--zip")
+                {
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new UsageException("--zip 缺少参数");
+                    }
+
+                    localZip = args[++i];
+                }
+                else
+                {
+                    throw new UsageException("--install-v1 不认识的参数: " + args[i]);
+                }
+            }
+
+            return await Installer.InstallFlowAsync(gameDir, instance, localZip).ConfigureAwait(false);
+        }
+
         private static int Pack(PackApplier.PackOptions options)
         {
             try
@@ -867,7 +914,9 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--tag <Tag>] [--dry-run]");
             writer.WriteLine("  RstcUpdater.exe --fetch-pack <游戏目录> --release-json <文件> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--asset-name <名>] [--keep-zip]");
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
+            writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程（原版+Fabric+实例+整合包；--zip 供本地测试）");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
+            writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe --help");
             writer.WriteLine("");
