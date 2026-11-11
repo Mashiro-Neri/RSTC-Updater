@@ -16,8 +16,8 @@
 | build | `dotnet build src/RstcUpdater/RstcUpdater.csproj -c Release` | 2026-11-11 通过（0 警告 0 错误） |
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
 | test | 待建 | — |
-| smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/085bb8f7cd2b3166fe5c3cc424fd23ce7925929b |
-| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:29/588.9 MiB，warm 3.6 s/0 MiB，见 evidence/stage0/install-26.3/e5b700f…/20261111_211437 |
+| smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/f6a470ac50bcd0b468edac92c408e232ffe85262 |
+| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB，见 evidence/stage0/install-26.3/f6a470ac50bcd0b468edac92c408e232ffe85262/20261111_215651 |
 | deploy / rollback | N/A（阶段 0 无部署） | — |
 
 ## 3. 运行与部署身份
