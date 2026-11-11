@@ -15,14 +15,18 @@
 | install | `dotnet restore src/RstcUpdater/RstcUpdater.csproj` | 2026-11-11 通过 |
 | build | `dotnet build src/RstcUpdater/RstcUpdater.csproj -c Release` | 2026-11-11 通过（0 警告 0 错误） |
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
-| test | 待建 | — |
-| smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/f6a470ac50bcd0b468edac92c408e232ffe85262 |
+| test | `pwsh -File scripts/v1/smoke.ps1 -GameDir <有 26.3 的临时目录>` | 2026-11-12 **30/30 PASS**（安装/更新/迁移/自更新检查/状态） |
+| smoke | `RstcUpdater.exe --status [游戏目录]` | 2026-11-12 非交互状态面板 exit 0 |
 | install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB |
+| v1-install | `RstcUpdater.exe --install-v1 <游戏目录> [--instance <名>] [--zip <本地包>]` | 2026-11-12 夹具包成功；Release 路径在 6.0 前正确拦截 5.5（exit 5，不建实例） |
+| v1-update | `RstcUpdater.exe --update-v1 <游戏目录> --instance <名> [--zip <本地包>] [--dry-run]` | 2026-11-12 计划预览/实际更新/越界 zip exit 7 均通过 |
+| v1-migrate | `RstcUpdater.exe --migrate-v1 <游戏目录> --from <源> --to <目标> [--categories ...] [--overwrite]` | 2026-11-12 默认拒绝覆盖/覆盖前备份/失败回滚通过 |
+| v1-self | `RstcUpdater.exe --check-self` | 2026-11-12 5.0.0 vs v4.11 正确报已最新；替换 E1/E2 待 v5 资产 |
 | provision | `RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods>]` | 2026-11-11：A2/A1/B 结构 + 隔离配置保留实测通过 |
 | pack | `RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run]` | 2026-11-11：0-5 **47 条**断言通过（含 H5/M3 回归） |
 | fetch-pack | `RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>` | 2026-11-11：真实 5.5 包下载+sha256+422 文件内容校验通过 |
 | rollback | `RstcUpdater.exe --rollback <游戏目录> --instance <名>` | 2026-11-11：fail-closed 实测 |
-| deploy / rollback | N/A（阶段 0 无部署） | — |
+| deploy / rollback | N/A（玩家本机控制台程序，无部署） | — |
 
 ## 3. 运行与部署身份
 

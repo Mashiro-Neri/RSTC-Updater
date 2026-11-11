@@ -14,16 +14,16 @@
     "expect": "commit=<HEAD>"
   },
   "smoke": {
-    "argv": ["src/RstcUpdater/bin/Release/net48/RstcUpdater.exe", "--probe"],
-    "asserts": ["version-json", "exit-code", "spectre-output"]
+    "argv": ["src/RstcUpdater/bin/Release/net48/RstcUpdater.exe", "--help"],
+    "asserts": ["exit-code", "usage-lines"]
   },
   "health": null,
   "backup": null,
   "migrate": null,
   "deploy": null,
   "rollback": {
-    "argv": [],
-    "drill": "N/A：阶段 0 只写独立临时目录，删除临时目录即回滚"
+    "argv": ["src/RstcUpdater/bin/Release/net48/RstcUpdater.exe", "--rollback", "<游戏目录>", "--instance", "<实例名>"],
+    "drill": "V1：pack 更新带 journal 与 rstc-backup，--rollback 实测恢复哈希一致；迁移覆盖前备份到 rstc-backup/migrate_*，失败自动恢复"
   },
   "highRiskPaths": [
     "versions/**",

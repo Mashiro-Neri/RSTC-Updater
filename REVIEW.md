@@ -36,3 +36,15 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 证据脚本需要 PowerShell 7+（`#Requires -Version 7.0`），Windows PowerShell 5.1 跑不了。
 - 禁止当作 finding 的风格项：控制台配色、表格边框样式、日志里的中文标点。
 - 历史事故→检查项：v4.11 曾因 UTF-8 编码导致启动闪退（`62788cd`），v5 所有中文输出必须显式 UTF-8；v4 自更新依赖两个资产名，v5 变更资产名时必须验证 v4 用户路径。
+
+## 6. V1 审查记录（2026-11-12）
+
+| 轮次 | 审查对象 | 结论 | 报告 |
+|---|---|---|---|
+| 1 | 9c67a6b | review-open：H1（迁移覆盖）+ M1/M2/M3/M5/M6/M8 | `evidence/v1/review/20261112_0023/REVIEW_REPORT.md` |
+| 2 | 9fea547 | 6 项 closed；新 R2-M1（迁移遇只读目标崩溃/部分写入） | `evidence/v1/review/20261112_0038/REVIEW_REPORT.md` |
+| 3 | 0c3fae（代码 `f5e8467`） | **PASS**：无未关闭 BLOCKER/HIGH/MEDIUM；M6 PARTIAL 不阻断（替换路径在无 v5 资产时不可达） | `evidence/v1/review/20261112_0052/REVIEW_REPORT.md` |
+
+- 冒烟：`scripts/v1/smoke.ps1` 30 条断言，最近一次 PASS 绑代码 commit `29f02b2`（证据 `evidence/v1/smoke/29f02b2…/`）。
+- 开放 LOW/NIT（不阻断）：自更新 `/PURGE` 与 E1/E2 实际替换（**发布 v5 自更新资产前必须补验**）、TUI 完整动作按键、真实网络卡死/403。
+- 未验证（不得 verified）：A1b（PCL2/HMCL 实际启动/mod 生效）、真实 6.0/v5 Release 成功路径、0-7、用户验收。
