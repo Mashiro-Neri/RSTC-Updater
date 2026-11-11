@@ -1,8 +1,8 @@
+#Requires -Version 7.0
 <#
 阶段 0-1：在独立临时目录安装原版 26.3（L2，用户已确认）。
-用法（项目根）:
-  $env:RSTC_FORBIDDEN_TARGETS = 'E:\其他文件\红石镇客户端'
-  powershell -ExecutionPolicy Bypass -File scripts\spike\run-install-26.3.ps1 -GameDir "E:\...\evidence\stage0\test-minecraft-<ts>"
+用法（项目根，需要 PowerShell 7+）:
+  pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\spike\run-install-26.3.ps1 -GameDir "E:\...\evidence\stage0\test-minecraft-<ts>"
 #>
 param(
     [Parameter(Mandatory = $true)][string]$GameDir,

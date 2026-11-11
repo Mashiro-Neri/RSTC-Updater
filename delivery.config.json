@@ -1,6 +1,6 @@
 {
   "contractVersion": "1.0",
-  "lastVerified": "pending-review",
+  "lastVerified": "demo-awaiting-user",
   "verify": [
     {
       "argv": ["dotnet", "build", "src/RstcUpdater/RstcUpdater.csproj", "-c", "Release", "-nologo"],

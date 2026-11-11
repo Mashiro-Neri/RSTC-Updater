@@ -51,7 +51,7 @@ namespace RstcUpdater
 
             if (args.Length == 0)
             {
-                PrintUsage();
+                PrintUsage(Console.Error);
                 return ExitUsage;
             }
 
@@ -65,19 +65,24 @@ namespace RstcUpdater
                         return await InstallAsync(ParseInstallOptions(args));
                     case "--help":
                     case "-h":
-                        PrintUsage();
+                        PrintUsage(Console.Out);
                         return ExitOk;
                     default:
                         Console.Error.WriteLine("未知模式: " + args[0]);
-                        PrintUsage();
+                        PrintUsage(Console.Error);
                         return ExitUsage;
                 }
             }
             catch (UsageException ex)
             {
                 Console.Error.WriteLine("参数错误: " + ex.Message);
-                PrintUsage();
+                PrintUsage(Console.Error);
                 return ExitUsage;
+            }
+            catch (ProbeFormatException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                return ExitProbeFailed;
             }
             catch (OperationCanceledException)
             {
@@ -131,7 +136,7 @@ namespace RstcUpdater
                 return ExitProbeFailed;
             }
 
-            using (var doc = JsonDocument.Parse(manifest))
+            using (var doc = ParseOrFail(manifest, "版本清单"))
             {
                 JsonElement? target = null;
                 foreach (var version in doc.RootElement.GetProperty("versions").EnumerateArray())
@@ -167,7 +172,7 @@ namespace RstcUpdater
                     return ExitProbeFailed;
                 }
 
-                using (var versionDoc = JsonDocument.Parse(versionJson))
+                using (var versionDoc = ParseOrFail(versionJson, TargetVersion + " 版本 JSON"))
                 {
                     var root = versionDoc.RootElement;
                     int java = root.GetProperty("javaVersion").GetProperty("majorVersion").GetInt32();
@@ -533,14 +538,33 @@ namespace RstcUpdater
             return options;
         }
 
-        private static void PrintUsage()
+        private static JsonDocument ParseOrFail(string json, string what)
         {
-            Console.Error.WriteLine("用法:");
-            Console.Error.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
-            Console.Error.WriteLine("  RstcUpdater.exe --install <空的绝对目录> [--reuse]   # 阶段 0 验证：安装原版 26.3，不下载 Java；--reuse 允许续跑/复用已有目录");
-            Console.Error.WriteLine("  RstcUpdater.exe --help");
-            Console.Error.WriteLine("");
-            Console.Error.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");
+            try
+            {
+                return JsonDocument.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                throw new ProbeFormatException(what + " 解析失败: " + ex.Message);
+            }
+        }
+
+        private sealed class ProbeFormatException : Exception
+        {
+            public ProbeFormatException(string message) : base(message)
+            {
+            }
+        }
+
+        private static void PrintUsage(TextWriter writer)
+        {
+            writer.WriteLine("用法:");
+            writer.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
+            writer.WriteLine("  RstcUpdater.exe --install <空的绝对目录> [--reuse]   # 阶段 0 验证：安装原版 26.3，不下载 Java；--reuse 允许续跑/复用已有目录");
+            writer.WriteLine("  RstcUpdater.exe --help");
+            writer.WriteLine("");
+            writer.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");
         }
 
         private static string GetRealOs()

@@ -34,3 +34,17 @@
 - 自动备份 `options.txt`、`servers.dat` 及自定义 config
 - 内置多个下载镜像，自动测速选最快
 - 更新日志保存在 `update_log_*.txt`
+
+## v5（开发中）
+
+`src/RstcUpdater/` 是 C# 控制台重写版（.NET Framework 4.8），当前完成阶段 0-1：
+
+```powershell
+dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release   # 需要 .NET SDK 8；net48 引用程序集由 NuGet 提供
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --probe    # 拉取 26.3 元数据探针
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install <空目录> [--reuse]   # 安装原版 26.3（不下载 Java）
+```
+
+- 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`
+- 证据脚本：`scripts/spike/`（需要 PowerShell 7+）
+- 证据原件：`evidence/stage0/`（本地保留，不入库）

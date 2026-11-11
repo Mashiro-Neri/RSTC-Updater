@@ -571,6 +571,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 发布包 `PCL/` | **不含**（用户纠正；隔离配置改由更新器写入） |
 | 测试床 | 本机 `26.3-Fabric` 试验田可用 |
 | 库数量验收口径 | 74（Windows 客户端规则过滤后的 artifact 数；用户确认 q-accept-74） |
+| 阶段 0 剩余写操作范围 | 仅 `evidence/stage0/test-minecraft-*` 临时目录（用户确认 q-l2-stage0-rest） |
 
 ---
 
@@ -628,8 +629,8 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 | 项 | 状态 | 证据 |
 |---|---|---|
-| 0-1 工具链 + 元数据探针 | 已通过独立复跑（第 2 轮要求：探针证据已在最终 commit 重跑） | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
-| 0-1 真实安装 26.3 | **已实现，待第 3 轮审查确认**（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
+| 0-1 工具链 + 元数据探针 | **已通过第 3 轮独立审查（PASS）**，待用户验收 | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
+| 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
 | 0-2 实例 json 三方案 | 未开始 | — |
 | 0-3 隔离配置写入 | 未开始 | — |
 | 0-4 5.5 真实包安装 | 未开始 | — |
