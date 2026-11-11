@@ -637,7 +637,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 0-3 隔离配置写入 | **已实现“只补键、不覆盖”**：PCL 保留自定义键并 upsert 隔离键；HMCL 已存在则只读不改（实测）；待启动生效验证 | 同上 |
 | 0-4 5.5 真实包安装 | **已通过完整链路（18 条断言）**：`--fetch-pack` 下载 609,837,724 B / 79.3 s → sha256 与 Release digest 一致 → 426 overrides（跳过 4 个 `PCL/`）→ 422 文件 / 127 mod → **逐文件 SHA256 422/422 一致** → 幂等更新 422 复用 → 玩家数据保护；峰值空间估算约 1.24 GB | `evidence/stage0/pack-0-4/6f12437…/` |
 | 0-5 测试包更新链路 | **已通过**（35 条断言）：pack-min→v2 的删除/新增/保留清单/options 冲突/journal/备份保留 3 份；含 D1 中断注入+回滚、D2 dry-run 预览 | `evidence/stage0/pack-0-5/96218d8…/`（初版）、`6f12437…`（第 2 版） |
-| 0-6 复用/并行 | **复用已实测**：CmlLib warm 0 增量；pack 幂等更新 422 文件全部复用不重写；并行下载由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数） | 0-1/0-4 证据 |
+| 0-6 复用/并行 | **PARTIAL**：复用已实测（CmlLib warm 0 增量；pack 幂等 422 全复用）；并行由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数），**未做 A/B 量化** | 0-1/0-4 证据 |
 | 0-7 v4 手动迁移 | **指南已产出**：`requirements/v4到v5迁移指南.md`（含 v4 自更新坑与占位资产方案、回滚）；待 v5 Release 后用户实测 | — |
 
 **阶段 0 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证；⑤ 5.5 实包 overrides 顶层含 `PCL/` 与 `resourcepacks/`、`shaderpacks/`（原文档只列 4 项，已更正；`PCL/` 由更新器跳过）。

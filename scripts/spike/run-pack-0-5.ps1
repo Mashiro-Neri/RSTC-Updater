@@ -101,26 +101,32 @@ Check '更新 + --options pack' ($c4.Code -eq 0) "exit=$($c4.Code)"
 Check 'options 采用包内版本' ((Get-Content -LiteralPath (Join-Path $i3 'options.txt') -Raw -Encoding utf8) -match 'options v2 changed')
 $c4.Output | Out-File -FilePath (Join-Path $dir 'case5.optpack.txt') -Encoding utf8
 
-# ---------- 场景 6：D1 中断 + journal 恢复 + 回滚 ----------
+# ---------- 场景 6：D1 中断（删除阶段后）+ journal 恢复 + 回滚（可证伪） ----------
 Reset-Instance 'RSTC-0-5-fail'
 $ifail = Join-Path $game 'versions\RSTC-0-5-fail'
 $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5-fail')
 [byte[]](9..40) | Set-Content -LiteralPath (Join-Path $ifail 'mods\mytest.jar') -AsByteStream
+$preA = Hash (Join-Path $ifail 'config\a.txt')
+$preMin = Hash (Join-Path $ifail 'mods\min.jar')
+$preMy = Hash (Join-Path $ifail 'mods\mytest.jar')
 $env:RSTC_STAGE0_TEST = '1'
-$env:RSTC_STAGE0_FAIL_AFTER = '1'
+$env:RSTC_STAGE0_FAIL_AFTER_DELETES = '1'
 $interrupted = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-fail', '--update')
 $env:RSTC_STAGE0_TEST = $null
-$env:RSTC_STAGE0_FAIL_AFTER = $null
+$env:RSTC_STAGE0_FAIL_AFTER_DELETES = $null
 Check '注入中断后 exit 7' ($interrupted.Code -eq 7) "exit=$($interrupted.Code)"
+Check '中断时确实执行了删除（a.txt 已不在）' (-not (Test-Path -LiteralPath (Join-Path $ifail 'config\a.txt')))
+Check '中断时新文件 b.txt 已写入' (Test-Path -LiteralPath (Join-Path $ifail 'config\b.txt'))
 $jfail = Get-Content -LiteralPath (Join-Path $ifail '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
 Check '中断后 journal status=writing' ($jfail.status -eq 'writing') "status=$($jfail.status)"
 $interrupted.Output | Out-File -FilePath (Join-Path $dir 'case6.interrupted.txt') -Encoding utf8
 
 $rb = Run-Case @('--rollback', $game, '--instance', 'RSTC-0-5-fail')
 Check '回滚 exit 0' ($rb.Code -eq 0) "exit=$($rb.Code)"
-Check '回滚后 config/a.txt 恢复' (Test-Path -LiteralPath (Join-Path $ifail 'config\a.txt'))
+Check '回滚恢复 config/a.txt 且内容一致' ((Test-Path -LiteralPath (Join-Path $ifail 'config\a.txt')) -and ((Hash (Join-Path $ifail 'config\a.txt')) -eq $preA))
+Check '回滚恢复 mods/min.jar 且内容一致' ((Test-Path -LiteralPath (Join-Path $ifail 'mods\min.jar')) -and ((Hash (Join-Path $ifail 'mods\min.jar')) -eq $preMin))
+Check '回滚恢复 mods/mytest.jar 且内容一致' ((Test-Path -LiteralPath (Join-Path $ifail 'mods\mytest.jar')) -and ((Hash (Join-Path $ifail 'mods\mytest.jar')) -eq $preMy))
 Check '回滚后 config/b.txt 删除' (-not (Test-Path -LiteralPath (Join-Path $ifail 'config\b.txt')))
-Check '回滚后 mods/min.jar 恢复' (Test-Path -LiteralPath (Join-Path $ifail 'mods\min.jar'))
 Check '回滚后 mods/min2.jar 删除' (-not (Test-Path -LiteralPath (Join-Path $ifail 'mods\min2.jar')))
 $jrb = Get-Content -LiteralPath (Join-Path $ifail '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
 Check '回滚后 journal status=rolledback' ($jrb.status -eq 'rolledback') "status=$($jrb.status)"
@@ -138,6 +144,39 @@ for ($i = 0; $i -lt 4; $i++) {
 }
 $count = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory).Count
 Check '备份保留 3 份（4 次真实覆盖后）' ($count -eq 3) "count=$count"
+
+# ---------- 场景 8：H5 备份缺失/失败 journal 的回滚与 Trim 保护 ----------
+Reset-Instance 'RSTC-0-5-missing'
+$imiss = Join-Path $game 'versions\RSTC-0-5-missing'
+$null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5-missing')
+$env:RSTC_STAGE0_TEST = '1'
+$env:RSTC_STAGE0_FAIL_AFTER_DELETES = '1'
+$null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-missing', '--update')
+$env:RSTC_STAGE0_TEST = $null
+$env:RSTC_STAGE0_FAIL_AFTER_DELETES = $null
+$jmiss = Get-Content -LiteralPath (Join-Path $imiss '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
+$failedBackup = $jmiss.backupPath
+Check '失败 journal 记录了 backupPath' ([bool]$failedBackup)
+# 删掉一个备份文件，模拟备份丢失
+$backupVictim = Join-Path $failedBackup 'files\config\a.txt'
+if (Test-Path -LiteralPath $backupVictim) { Remove-Item -LiteralPath $backupVictim -Force }
+$rbMiss = Run-Case @('--rollback', $game, '--instance', 'RSTC-0-5-missing')
+Check '备份缺失时回滚拒绝（exit 7）' ($rbMiss.Code -eq 7) "exit=$($rbMiss.Code)"
+Check '备份缺失时输出“拒绝回滚”' ($rbMiss.Output -match '备份缺失，拒绝回滚')
+$jmiss2 = Get-Content -LiteralPath (Join-Path $imiss '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
+Check '备份缺失时 journal 保持 writing（未标 rolledback）' ($jmiss2.status -eq 'writing') "status=$($jmiss2.status)"
+$rbMiss.Output | Out-File -FilePath (Join-Path $dir 'case8.rollback-missing.txt') -Encoding utf8
+
+# Trim 保护：在其它实例上再产生 4 个备份，失败 journal 的备份不得被删除
+for ($i = 0; $i -lt 4; $i++) {
+    $zip = if ($i % 2 -eq 0) { 'pack-min.zip' } else { 'pack-min-v2.zip' }
+    $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs $zip), '--instance', 'RSTC-0-5-missing', '--update')
+}
+Check '失败 journal 的备份未被 Trim 删除' (Test-Path -LiteralPath $failedBackup)
+
+# 非法实例名回滚必须被拒绝
+$badName = Run-Case @('--rollback', $game, '--instance', '..\..\evil')
+Check '非法实例名回滚被拒（exit 2）' ($badName.Code -eq 2) "exit=$($badName.Code)"
 
 # ---------- 证据 ----------
 $facts = @()

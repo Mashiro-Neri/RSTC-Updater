@@ -127,6 +127,7 @@ namespace RstcUpdater
                 var packFiles = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
                 ZipArchiveEntry indexEntry = null;
                 int pclSkipped = 0;
+                int launcherSkipped = 0;
 
                 foreach (var entry in zip.Entries)
                 {
@@ -160,6 +161,13 @@ namespace RstcUpdater
                         continue;
                     }
 
+                    // 启动器配置属于本地状态，绝不由包覆盖
+                    if (string.Equals(rel, "hmclversion.cfg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        launcherSkipped++;
+                        continue;
+                    }
+
                     packFiles[rel] = entry;
                 }
 
@@ -178,7 +186,24 @@ namespace RstcUpdater
                     }
                 }
 
-                string tag = string.IsNullOrEmpty(options.Tag) ? versionId : options.Tag;
+                string tag = options.Tag;
+                if (string.IsNullOrEmpty(tag))
+                {
+                    string existingTag = Path.Combine(instanceDir, "RSTC_version.txt");
+                    if (File.Exists(existingTag))
+                    {
+                        string current = File.ReadAllText(existingTag, Encoding.UTF8).Trim();
+                        if (current.Length > 0)
+                        {
+                            tag = current;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(tag))
+                {
+                    tag = versionId;
+                }
 
                 // ---- 计划 ----
                 var writes = new List<string>();
@@ -273,6 +298,7 @@ namespace RstcUpdater
                 table.AddColumn("数量");
                 table.AddRow("包内文件（overrides）", packFiles.Count.ToString());
                 table.AddRow("PCL/ 跳过（用户要求）", pclSkipped.ToString());
+                table.AddRow("启动器配置跳过", launcherSkipped.ToString());
                 table.AddRow("写入", writes.Count.ToString() + "（覆盖 " + overwrites.Count + "，新建 " + newFiles.Count + "）");
                 table.AddRow("复用（内容一致不重写）", reused.ToString());
                 table.AddRow("删除", deletes.Count.ToString() + "（更新模式）");
@@ -341,6 +367,10 @@ namespace RstcUpdater
                 }
 
                 AnsiConsole.MarkupLine("[green]备份[/] " + Markup.Escape(backupRoot) + "（" + backedUp + " 个文件）");
+                if (backedUp == 0)
+                {
+                    AnsiConsole.MarkupLine("[grey]本次无需备份（无覆盖/删除）[/]");
+                }
 
                 // 写入（测试钩子：环境变量控制写入 N 个后抛中断，用于验证 journal/回滚）
                 int failAfter = GetTestFailAfter();
@@ -370,6 +400,12 @@ namespace RstcUpdater
                     {
                         File.Delete(dest);
                     }
+                }
+
+                // 测试钩子：删除阶段完成后中断（用于验证 rollback 对被删除文件的恢复）
+                if (GetTestFailAfterDeletes() > 0)
+                {
+                    throw new IOException("测试注入：删除阶段后中断");
                 }
 
                 File.WriteAllText(Path.Combine(instanceFull, "modrinth.index.json"), indexJson, new UTF8Encoding(false));
@@ -410,6 +446,16 @@ namespace RstcUpdater
             }
         }
 
+        private static int GetTestFailAfterDeletes()
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable("RSTC_STAGE0_TEST"), "1", StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            return string.Equals(Environment.GetEnvironmentVariable("RSTC_STAGE0_FAIL_AFTER_DELETES"), "1", StringComparison.Ordinal) ? 1 : 0;
+        }
+
         private static int GetTestFailAfter()
         {
             if (!string.Equals(Environment.GetEnvironmentVariable("RSTC_STAGE0_TEST"), "1", StringComparison.Ordinal))
@@ -445,6 +491,12 @@ namespace RstcUpdater
 
         public static int Rollback(string gameDir, string instanceName)
         {
+            if (!IsSafeInstanceName(instanceName))
+            {
+                Console.Error.WriteLine("实例名不合法: " + instanceName);
+                return 2;
+            }
+
             string instanceDir = Path.GetFullPath(Path.Combine(gameDir, "versions", instanceName));
             string journalPath = Path.Combine(instanceDir, ".rstc-journal.json");
             if (!File.Exists(journalPath))
@@ -477,18 +529,44 @@ namespace RstcUpdater
             var newFiles = journal["newFiles"]?.AsArray().Select(x => x.GetValue<string>()).ToList() ?? new List<string>();
             var deletes = journal["deletes"]?.AsArray().Select(x => x.GetValue<string>()).ToList() ?? new List<string>();
 
+            // fail-closed：先确认所有需要恢复的备份都在，缺一个就拒绝回滚且不改 journal
+            var needingRestore = overwrites.Concat(deletes)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var missingBackups = new List<string>();
+            if (string.IsNullOrEmpty(backupRoot))
+            {
+                missingBackups.Add("(journal 未记录 backupPath)");
+            }
+            else
+            {
+                foreach (string rel in needingRestore)
+                {
+                    string src = Path.Combine(backupRoot, "files", rel.Replace('/', '\\'));
+                    if (!File.Exists(src))
+                    {
+                        missingBackups.Add(rel + " -> " + src);
+                    }
+                }
+            }
+
+            if (missingBackups.Count > 0)
+            {
+                Console.Error.WriteLine("备份缺失，拒绝回滚（journal 保持 " + status + "，可人工恢复）:");
+                foreach (string m in missingBackups.Take(20))
+                {
+                    Console.Error.WriteLine("  " + m);
+                }
+
+                return 7;
+            }
+
             try
             {
                 int restored = 0;
-                foreach (string rel in overwrites.Concat(deletes).Distinct(StringComparer.OrdinalIgnoreCase))
+                foreach (string rel in needingRestore)
                 {
-                    string src = Path.Combine(backupRoot ?? "", "files", rel.Replace('/', '\\'));
-                    if (!File.Exists(src))
-                    {
-                        Console.Error.WriteLine("备份缺失，无法恢复: " + rel);
-                        continue;
-                    }
-
+                    string src = Path.Combine(backupRoot, "files", rel.Replace('/', '\\'));
                     string dest = EnsureInside(instanceDir, rel);
                     Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? instanceDir);
                     File.Copy(src, dest, true);
@@ -515,7 +593,7 @@ namespace RstcUpdater
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("回滚失败: " + ex.GetType().Name + ": " + ex.Message);
+                Console.Error.WriteLine("回滚失败（journal 未标记 rolledback）: " + ex.GetType().Name + ": " + ex.Message);
                 return 7;
             }
         }
@@ -532,6 +610,11 @@ namespace RstcUpdater
         private static bool IsNeverDelete(string rel)
         {
             if (NeverDelete.Contains(TopSegment(rel)))
+            {
+                return true;
+            }
+
+            if (string.Equals(Path.GetFileName(rel), "DistantHorizons.toml", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -595,12 +678,26 @@ namespace RstcUpdater
                 return;
             }
 
+            // 失败/进行中的 journal 指向的备份不能删，否则无法回滚
+            var protectedBackups = GetProtectedBackups(gameDir);
             var dirs = Directory.GetDirectories(root).OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase).ToList();
-            for (int i = 3; i < dirs.Count; i++)
+            int kept = 0;
+            foreach (string dir in dirs)
             {
+                if (protectedBackups.Contains(Path.GetFullPath(dir)))
+                {
+                    continue;
+                }
+
+                if (kept < 3)
+                {
+                    kept++;
+                    continue;
+                }
+
                 try
                 {
-                    Directory.Delete(dirs[i], true);
+                    Directory.Delete(dir, true);
                 }
                 catch (IOException)
                 {
@@ -609,6 +706,54 @@ namespace RstcUpdater
                 {
                 }
             }
+        }
+
+        private static HashSet<string> GetProtectedBackups(string gameDir)
+        {
+            var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string versions = Path.Combine(gameDir, "versions");
+            if (!Directory.Exists(versions))
+            {
+                return protectedPaths;
+            }
+
+            foreach (string journalPath in Directory.EnumerateFiles(versions, ".rstc-journal.json", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var journal = JsonNode.Parse(File.ReadAllText(journalPath, Encoding.UTF8)) as JsonObject;
+                    string status = journal?["status"]?.GetValue<string>() ?? "";
+                    if (string.Equals(status, "writing", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string backupPath = journal?["backupPath"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(backupPath))
+                        {
+                            protectedPaths.Add(Path.GetFullPath(backupPath));
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // journal 损坏时不冒险删备份
+                    string backupPath = null;
+                    try
+                    {
+                        var journal = JsonNode.Parse(File.ReadAllText(journalPath, Encoding.UTF8)) as JsonObject;
+                        backupPath = journal?["backupPath"]?.GetValue<string>();
+                    }
+                    catch (Exception)
+                    {
+                    }
+
+                    if (!string.IsNullOrEmpty(backupPath))
+                    {
+                        protectedPaths.Add(Path.GetFullPath(backupPath));
+                    }
+                }
+            }
+
+            return protectedPaths;
         }
 
         internal sealed class PackOptions

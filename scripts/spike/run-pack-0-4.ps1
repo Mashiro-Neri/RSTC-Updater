@@ -46,14 +46,30 @@ if (Test-Path -LiteralPath $instanceDir) { Remove-Item -LiteralPath $instanceDir
 $tmpDir = Join-Path $game '.rstc-tmp'
 if (Test-Path -LiteralPath $tmpDir) { Remove-Item -LiteralPath $tmpDir -Recurse -Force }
 
-# 3. fetch-pack：下载 → sha256 校验 → 应用
+# 3. fetch-pack：下载 → sha256 校验 → 应用（用 Start-Process 轮询磁盘，测量真实峰值）
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-$c1 = Run-Case @('--fetch-pack', $game, '--release-json', $releaseJson, '--instance', $instanceName, '--keep-zip')
+$fetchLog = Join-Path $dir 'fetch-install.txt'
+$fetchErr = Join-Path $dir 'fetch-install.err.txt'
+$freeBefore = (Get-PSDrive E).Free
+$freeMin = $freeBefore
+$argv = @('--fetch-pack', $game, '--release-json', $releaseJson, '--instance', $instanceName, '--keep-zip')
+$proc = Start-Process -FilePath $exe -ArgumentList $argv -NoNewWindow -PassThru -RedirectStandardOutput $fetchLog -RedirectStandardError $fetchErr
+while (-not $proc.HasExited) {
+    Start-Sleep -Milliseconds 200
+    $f = (Get-PSDrive E).Free
+    if ($f -lt $freeMin) { $freeMin = $f }
+}
+$proc.WaitForExit()
+$c1Code = $proc.ExitCode
 $sw.Stop()
-Check 'fetch-pack exit 0' ($c1.Code -eq 0) "exit=$($c1.Code) elapsed=$([math]::Round($sw.Elapsed.TotalSeconds,1))s"
-Check '下载后 sha256 校验通过' ($c1.Output -match 'sha256 一致')
-Check '应用 PASS' ($c1.Output -match 'PACK_APPLY=PASS')
-$c1.Output | Out-File -FilePath (Join-Path $dir 'fetch-install.txt') -Encoding utf8
+$c1Text = Get-Content -LiteralPath $fetchLog -Raw -Encoding utf8
+$peakMeasured = $freeBefore - $freeMin
+$freeAfter = (Get-PSDrive E).Free
+Check 'fetch-pack exit 0' ($c1Code -eq 0) "exit=$c1Code elapsed=$([math]::Round($sw.Elapsed.TotalSeconds,1))s"
+Check '下载后 sha256 校验通过' ($c1Text -match 'sha256 一致')
+Check '应用 PASS' ($c1Text -match 'PACK_APPLY=PASS')
+Check '记录了剩余空间' ($c1Text -match '剩余空间')
+Check '实测峰值 > zip 大小' ($peakMeasured -gt 609837724) "peak=$peakMeasured"
 
 $zipPath = Join-Path $tmpDir 'RSTC-5.5.zip'
 Check 'zip 已保留（--keep-zip）' (Test-Path -LiteralPath $zipPath)
@@ -80,7 +96,7 @@ $mismatch = 0
 $checked = 0
 $sha = [System.Security.Cryptography.SHA256]::Create()
 foreach ($entry in $archive.Entries) {
-    $full = $entry.FullName.Replace('\\', '/')
+    $full = $entry.FullName -replace '\\', '/'
     if (-not $full.StartsWith('overrides/') -or $full.EndsWith('/')) { continue }
     $rel = $full.Substring('overrides/'.Length)
     if ($rel.StartsWith('PCL/')) { continue }
@@ -97,22 +113,24 @@ foreach ($entry in $archive.Entries) {
 }
 $archive.Dispose()
 $sha.Dispose()
-Check '逐文件内容 SHA256 一致' ($mismatch -eq 0) "checked=$checked mismatch=$mismatch"
+Check '逐文件内容 SHA256 一致' ($mismatch -eq 0 -and $checked -eq 422) "checked=$checked mismatch=$mismatch"
 
-# 6. 幂等更新（复用）
-$c2 = Run-Case @('--pack', $game, '--zip', $zipPath, '--instance', $instanceName, '--update')
+# 6. 幂等更新（复用）+ 必须保留 Tag
+$c2 = Run-Case @('--pack', $game, '--zip', $zipPath, '--instance', $instanceName, '--update', '--tag', $tag)
 Check '幂等更新 exit 0' ($c2.Code -eq 0) "exit=$($c2.Code)"
 Check '幂等更新复用 422' ($c2.Output -match '复用（内容一致不重写）[\s\S]{0,80}?422')
+Check '幂等更新后 RSTC_version.txt 仍为 Tag' ((Get-Content -LiteralPath (Join-Path $instanceDir 'RSTC_version.txt') -Raw -Encoding utf8).Trim() -eq $tag)
 $c2.Output | Out-File -FilePath (Join-Path $dir 'update-idempotent.txt') -Encoding utf8
 
 # 7. 玩家数据保护
 New-Item -ItemType Directory -Force (Join-Path $instanceDir 'saves') | Out-Null
 [byte[]](1..32) | Set-Content -LiteralPath (Join-Path $instanceDir 'saves\test.dat') -AsByteStream
 [byte[]](33..64) | Set-Content -LiteralPath (Join-Path $instanceDir 'mods\player-added.jar') -AsByteStream
-$c3 = Run-Case @('--pack', $game, '--zip', $zipPath, '--instance', $instanceName, '--update')
+$c3 = Run-Case @('--pack', $game, '--zip', $zipPath, '--instance', $instanceName, '--update', '--tag', $tag)
 Check '带玩家数据更新 exit 0' ($c3.Code -eq 0) "exit=$($c3.Code)"
 Check 'saves/test.dat 保留' (Test-Path -LiteralPath (Join-Path $instanceDir 'saves\test.dat'))
 Check '玩家自加 mod 默认删除' (-not (Test-Path -LiteralPath (Join-Path $instanceDir 'mods\player-added.jar')))
+Check '玩家数据更新后 RSTC_version.txt 仍为 Tag' ((Get-Content -LiteralPath (Join-Path $instanceDir 'RSTC_version.txt') -Raw -Encoding utf8).Trim() -eq $tag)
 $c3.Output | Out-File -FilePath (Join-Path $dir 'update-with-player-data.txt') -Encoding utf8
 
 # 8. 体积与峰值空间
@@ -130,6 +148,10 @@ $facts += "content_checked=$checked"
 $facts += "content_mismatch=$mismatch"
 $facts += "instance_bytes=$instSize"
 $facts += "peak_estimate_bytes=$peakExtra"
+$facts += "peak_measured_bytes=$peakMeasured"
+$facts += "free_before=$freeBefore"
+$facts += "free_min=$freeMin"
+$facts += "free_after=$freeAfter"
 $facts += "fetch_and_apply_seconds=$([math]::Round($sw.Elapsed.TotalSeconds, 1))"
 $facts += 'product_version=' + (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
 $facts += 'powershell=' + $PSVersionTable.PSVersion

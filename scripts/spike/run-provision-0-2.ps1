@@ -63,6 +63,16 @@ $factsExtra += "a2_jvm_rule_objects=$a2RuleCount"
 Write-Host ("[JVM] vanilla=$vanillaJvmCount (rule=$vanillaRuleCount) A2=$a2JvmCount (rule=$a2RuleCount)")
 if ($a2RuleCount -lt $vanillaRuleCount) { Write-Error "A2 丢失条件 JVM 参数（$a2RuleCount < $vanillaRuleCount）"; exit 1 }
 
+# ---------- M9：preserve 测试会污染 A1 配置，复位后必须可再次 verify ----------
+Remove-Item -LiteralPath (Join-Path $instA1 'PCL\Setup.ini'), (Join-Path $instA1 'hmclversion.cfg') -Force -ErrorAction SilentlyContinue
+$null = & $exe --provision $full --reuse 2>&1 | Out-String
+$finalVerifyRaw = & (Join-Path $RepoRoot 'scripts\spike\verify-provision-0-2.ps1') -GameDir $full 6>&1 | Out-String
+$finalVerifyExit = $LASTEXITCODE
+$factsExtra += "final_verify_exit=$finalVerifyExit"
+$finalVerifyRaw | Out-File -FilePath (Join-Path $dir 'verify.after-preserve.txt') -Encoding utf8
+Write-Host "[FINAL] verify_exit=$finalVerifyExit"
+if ($finalVerifyExit -ne 0) { Write-Error "preserve 测试复位后 verify 失败（脚本不可复跑）"; exit 1 }
+
 $facts = @()
 $facts += "commit=$commit"
 $facts += "game_dir=$full"
