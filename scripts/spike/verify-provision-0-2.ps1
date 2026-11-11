@@ -23,12 +23,23 @@ $fp = Get-Content -LiteralPath $fabricJson -Raw -Encoding utf8 | ConvertFrom-Jso
 if ($fp.inheritsFrom -ne '26.3') { Fail "Fabric profile inheritsFrom=$($fp.inheritsFrom)" }
 Ok "Fabric profile（inheritsFrom=26.3, $($fp.libraries.Count) 库）"
 
-# 2. Fabric 库 + intermediary
-$fabricLibs = @(Get-ChildItem -LiteralPath (Join-Path $game 'libraries\net\fabricmc') -Recurse -File -Filter *.jar -ErrorAction SilentlyContinue)
-if ($fabricLibs.Count -lt 2) { Fail "Fabric 库不足: $($fabricLibs.Count)" }
+# 2. Fabric 库（逐个核对 profile 里的 maven 坐标）+ intermediary
+$missing = @()
+foreach ($l in $fp.libraries) {
+    $parts = $l.name -split ':'
+    $group = $parts[0] -replace '\.', '/'
+    $artifact = $parts[1]
+    $ver = $parts[2]
+    $classifier = if ($parts.Length -gt 3) { '-' + $parts[3] } else { '' }
+    $rel = "$group/$artifact/$ver/$artifact-$ver$classifier.jar"
+    $p = Join-Path $game ('libraries\' + $rel.Replace('/', '\'))
+    if (-not (Test-Path -LiteralPath $p)) { $missing += $l.name }
+}
+if ($missing.Count -gt 0) { Fail ("缺少 Fabric 库: " + ($missing -join ', ')) }
+Ok "Fabric profile $($fp.libraries.Count)/$($fp.libraries.Count) 库文件存在"
 $intermediary = Join-Path $game 'libraries\net\fabricmc\intermediary\0.0.0\intermediary-0.0.0.jar'
 if (-not (Test-Path -LiteralPath $intermediary)) { Fail '缺少 intermediary 占位 jar' }
-Ok "Fabric 库 $($fabricLibs.Count) 个 + intermediary"
+Ok 'intermediary 占位 jar 存在'
 
 # 3. 三份实例
 $expect = @{
