@@ -682,6 +682,8 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **复审加固（R2）**：迁移异常自动回滚（恢复被覆盖、删除新建）；自更新备份任一文件失败即中止；替换失败保留备份并记录错误；菜单新增「回滚未完成更新」；多实例时状态标注数量。
 
+**发布侧校验（新增）**：`scripts/release/validate-pack.ps1` 对整合包/更新器 zip 做发布前门禁（根 `modrinth.index.json`、`versionId`、`dependencies.minecraft`、`overrides/`、**不得含 `PCL/`**、mods 数量、更新器含 `RstcUpdater.exe`）。实测：26.3 夹具包 PASS；真实 5.5 包因含 `PCL/`（4 项）且 MC=1.21.10 被正确判 FAIL。发布流程见 `docs/发布检查清单.md`。
+
 ---
 
 ## 附录 A：发布侧需求（本次不实现，只写契约）

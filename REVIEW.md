@@ -43,8 +43,14 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 |---|---|---|---|
 | 1 | 9c67a6b | review-open：H1（迁移覆盖）+ M1/M2/M3/M5/M6/M8 | `evidence/v1/review/20261112_0023/REVIEW_REPORT.md` |
 | 2 | 9fea547 | 6 项 closed；新 R2-M1（迁移遇只读目标崩溃/部分写入） | `evidence/v1/review/20261112_0038/REVIEW_REPORT.md` |
-| 3 | 0c3fae（代码 `f5e8467`） | **PASS**：无未关闭 BLOCKER/HIGH/MEDIUM；M6 PARTIAL 不阻断（替换路径在无 v5 资产时不可达） | `evidence/v1/review/20261112_0052/REVIEW_REPORT.md` |
+| 3 | f0c3fae（代码 `f5e8467`） | **PASS**：无未关闭 BLOCKER/HIGH/MEDIUM；M6 PARTIAL 不阻断（替换路径在无 v5 资产时不可达） | `evidence/v1/review/20261112_0052/REVIEW_REPORT.md` |
 
 - 冒烟：`scripts/v1/smoke.ps1` 30 条断言，最近一次 PASS 绑代码 commit `29f02b2`（证据 `evidence/v1/smoke/29f02b2…/`）。
 - 开放 LOW/NIT（不阻断）：自更新 `/PURGE` 与 E1/E2 实际替换（**发布 v5 自更新资产前必须补验**）、TUI 完整动作按键、真实网络卡死/403。
 - 未验证（不得 verified）：A1b（PCL2/HMCL 实际启动/mod 生效）、真实 6.0/v5 Release 成功路径、0-7、用户验收。
+
+## 7. 已接受 NIT（V1 代码冻结于 `9d90e54`，审查对象 `4dd289e` PASS）
+
+- R4-N4（partial）：MultiPrompt 未匹配 token 静默忽略；HandleUnfinishedJournals 的 catch 仍会吞 FlowFailureException（仅在脚本化异常输入下可见）。
+- R4-N2/R4-N5（open）：删除清单 PageSize、SelfUpdater 其他早期 abort 的 %TEMP% 清理。
+- 未来出现 v5 自更新资产后，需把 menu-smoke 脚本输入扩为 12+ 行并补 E1/E2 实测。

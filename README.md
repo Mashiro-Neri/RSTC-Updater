@@ -53,8 +53,6 @@ src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --check-self   # 检查更新�
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --menu-script <脚本>   # 用脚本输入驱动菜单（测试/自动化）
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 ```
 
 - 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`
