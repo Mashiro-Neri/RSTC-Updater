@@ -22,6 +22,11 @@ $exe = Join-Path $RepoRoot 'src\RstcUpdater\bin\Release\net48\RstcUpdater.exe'
 $argv = @('--provision', $full, '--reuse')
 if ($ModSource) { $argv += @('--mod-src', $ModSource) }
 
+# 干净起点：删掉上一轮可能被 preserve 测试污染的三实例
+foreach ($v in @('A2', 'A1', 'B')) {
+    Remove-Item -LiteralPath (Join-Path $full "versions\RSTC-0-2-$v") -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 & $exe @argv 2>&1 | Tee-Object -FilePath (Join-Path $dir 'provision.txt') -Encoding utf8
 $provisionExit = $LASTEXITCODE

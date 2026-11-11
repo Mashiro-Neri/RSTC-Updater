@@ -167,10 +167,10 @@ $jmiss2 = Get-Content -LiteralPath (Join-Path $imiss '.rstc-journal.json') -Raw 
 Check '备份缺失时 journal 保持 writing（未标 rolledback）' ($jmiss2.status -eq 'writing') "status=$($jmiss2.status)"
 $rbMiss.Output | Out-File -FilePath (Join-Path $dir 'case8.rollback-missing.txt') -Encoding utf8
 
-# Trim 保护：在其它实例上再产生 4 个备份，失败 journal 的备份不得被删除
+# Trim 保护：在**其它实例**上再产生 4 个备份，失败 journal 的备份不得被删除
 for ($i = 0; $i -lt 4; $i++) {
     $zip = if ($i % 2 -eq 0) { 'pack-min.zip' } else { 'pack-min-v2.zip' }
-    $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs $zip), '--instance', 'RSTC-0-5-missing', '--update')
+    $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs $zip), '--instance', 'RSTC-0-5', '--update')
 }
 Check '失败 journal 的备份未被 Trim 删除' (Test-Path -LiteralPath $failedBackup)
 
