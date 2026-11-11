@@ -17,3 +17,10 @@ Desktop.ini
 # Dev tools (local only)
 publish.bat
 publish.ps1
+
+# .NET build outputs
+src/**/bin/
+src/**/obj/
+
+# 运行证据（本地保留、不入库：含本机绝对路径）
+evidence/
