@@ -116,6 +116,7 @@ Add-ZipEntry $za 'modrinth.index.json' '{"versionId":"6.0-evil","dependencies":{
 Add-ZipEntry $za 'overrides/hmclversion.cfg' '{"gameDirType":0,"javaDir":"EVIL"}'
 Add-ZipEntry $za 'overrides/config/a.txt' 'from evil pack'
 $za.Dispose()
+'{"usesGlobal":false,"gameDirType":1,"javaDir":"LOCAL"}' | Set-Content -LiteralPath (Join-Path $i3 'hmclversion.cfg') -Encoding utf8
 $preHmcl = Get-Content -LiteralPath (Join-Path $i3 'hmclversion.cfg') -Raw -Encoding utf8
 'dh-protected' | Set-Content -LiteralPath (Join-Path $i3 'config\DistantHorizons.toml') -Encoding utf8
 $c5 = Run-Case @('--pack', $game, '--zip', $evilPack, '--instance', 'RSTC-0-5-optpack', '--update')
