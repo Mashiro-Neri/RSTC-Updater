@@ -20,8 +20,10 @@ $dir = Join-Path $RepoRoot "evidence\stage0\pack-0-5\$commit"
 New-Item -ItemType Directory -Force $dir | Out-Null
 $exe = Join-Path $RepoRoot 'src\RstcUpdater\bin\Release\net48\RstcUpdater.exe'
 
+$script:checks = 0
 $failures = New-Object System.Collections.Generic.List[string]
 function Check([string]$name, [bool]$ok, [string]$detail) {
+    $script:checks++
     if ($ok) { Write-Host "[OK]   $name $detail" -ForegroundColor Green }
     else { Write-Host "[FAIL] $name $detail" -ForegroundColor Red; $failures.Add("$name $detail") }
 }
@@ -33,12 +35,15 @@ function Reset-Instance([string]$name) {
     $p = Join-Path $game "versions\$name"
     if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
 }
+function Hash([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
 
-# ---------- 场景 1：安装 v1 -> 加玩家文件 -> 更新 v2（默认策略） ----------
+# ---------- 场景 1：安装 v1 -> 加玩家文件 ----------
+Remove-Item -LiteralPath (Join-Path $game 'rstc-backup') -Recurse -Force -ErrorAction SilentlyContinue
 Reset-Instance 'RSTC-0-5'
 $i1 = Join-Path $game 'versions\RSTC-0-5'
-$c1 = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5')
+$c1 = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5', '--tag', 'v20260712-103024')
 Check '安装 pack-min' ($c1.Code -eq 0 -and $c1.Output -match 'PACK_APPLY=PASS') "exit=$($c1.Code)"
+Check 'RSTC_version.txt 写 Tag' ((Get-Content -LiteralPath (Join-Path $i1 'RSTC_version.txt') -Raw -Encoding utf8).Trim() -eq 'v20260712-103024')
 $c1.Output | Out-File -FilePath (Join-Path $dir 'case1.install.txt') -Encoding utf8
 
 New-Item -ItemType Directory -Force (Join-Path $i1 'saves') | Out-Null
@@ -46,10 +51,21 @@ New-Item -ItemType Directory -Force (Join-Path $i1 'saves') | Out-Null
 [byte[]](33..64) | Set-Content -LiteralPath (Join-Path $i1 'mods\mytest.jar') -AsByteStream
 'player local options' | Set-Content -LiteralPath (Join-Path $i1 'options.txt') -Encoding utf8
 
+# ---------- 场景 2：D2 删除预览（dry-run，不得写盘） ----------
+$optsHashBefore = Hash (Join-Path $i1 'options.txt')
+$dry = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5', '--update', '--dry-run')
+Check 'dry-run exit 0' ($dry.Code -eq 0) "exit=$($dry.Code)"
+Check 'dry-run 预览 config/a.txt' ($dry.Output -match 'DELETE\s+config/a\.txt')
+Check 'dry-run 预览 mods/mytest.jar' ($dry.Output -match 'DELETE\s+mods/mytest\.jar')
+Check 'dry-run 不写盘（a.txt 仍在）' (Test-Path -LiteralPath (Join-Path $i1 'config\a.txt'))
+Check 'dry-run 不写盘（b.txt 未创建）' (-not (Test-Path -LiteralPath (Join-Path $i1 'config\b.txt')))
+Check 'dry-run 不写盘（options 未被改）' ((Hash (Join-Path $i1 'options.txt')) -eq $optsHashBefore)
+$dry.Output | Out-File -FilePath (Join-Path $dir 'case2.dryrun.txt') -Encoding utf8
+
+# ---------- 场景 3：真实更新 v2（默认策略） ----------
 $c2 = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5', '--update')
 Check '更新 pack-min-v2' ($c2.Code -eq 0 -and $c2.Output -match 'PACK_APPLY=PASS') "exit=$($c2.Code)"
-$c2.Output | Out-File -FilePath (Join-Path $dir 'case2.update.txt') -Encoding utf8
-
+$c2.Output | Out-File -FilePath (Join-Path $dir 'case3.update.txt') -Encoding utf8
 Check '删除 config/a.txt' (-not (Test-Path -LiteralPath (Join-Path $i1 'config\a.txt')))
 Check '新增 config/b.txt' (Test-Path -LiteralPath (Join-Path $i1 'config\b.txt'))
 Check '删除 mods/min.jar' (-not (Test-Path -LiteralPath (Join-Path $i1 'mods\min.jar')))
@@ -57,17 +73,15 @@ Check '新增 mods/min2.jar' (Test-Path -LiteralPath (Join-Path $i1 'mods\min2.j
 Check '玩家自加 mod 默认删除' (-not (Test-Path -LiteralPath (Join-Path $i1 'mods\mytest.jar')))
 Check 'saves/test.dat 保留' (Test-Path -LiteralPath (Join-Path $i1 'saves\test.dat'))
 Check 'options.txt 保留本地（冲突）' ((Get-Content -LiteralPath (Join-Path $i1 'options.txt') -Raw -Encoding utf8) -match 'player local options')
-Check '版本状态文件' ((Get-Content -LiteralPath (Join-Path $i1 'RSTC_version.txt') -Raw -Encoding utf8).Trim() -eq '6.0-min2')
 $journal = Get-Content -LiteralPath (Join-Path $i1 '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
 Check 'journal status=done' ($journal.status -eq 'done')
+Check 'journal 记录 backupPath' ([bool]$journal.backupPath)
+$latest = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory | Sort-Object Name)[-1]
+Check '备份含被删 config/a.txt' (Test-Path -LiteralPath (Join-Path $latest.FullName 'files\config\a.txt'))
+Check '备份含被删 mods/min.jar' (Test-Path -LiteralPath (Join-Path $latest.FullName 'files\mods\min.jar'))
+Check '备份含被删 mytest.jar' (Test-Path -LiteralPath (Join-Path $latest.FullName 'files\mods\mytest.jar'))
 
-$backups = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory | Sort-Object Name)
-$latest = $backups[-1]
-Check '备份含被删 config/a.txt' (Test-Path -LiteralPath (Join-Path $latest 'files\config\a.txt'))
-Check '备份含被删 mods/min.jar' (Test-Path -LiteralPath (Join-Path $latest 'files\mods\min.jar'))
-Check '备份含被删 mytest.jar' (Test-Path -LiteralPath (Join-Path $latest 'files\mods\mytest.jar'))
-
-# ---------- 场景 2：--keep 保留玩家文件 ----------
+# ---------- 场景 4：--keep 保留 ----------
 Reset-Instance 'RSTC-0-5-keep'
 $i2 = Join-Path $game 'versions\RSTC-0-5-keep'
 $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5-keep')
@@ -75,9 +89,9 @@ $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), 
 $c3 = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-keep', '--update', '--keep', 'mods/mytest.jar')
 Check '更新 + --keep' ($c3.Code -eq 0) "exit=$($c3.Code)"
 Check '--keep 保留 mods/mytest.jar' (Test-Path -LiteralPath (Join-Path $i2 'mods\mytest.jar'))
-$c3.Output | Out-File -FilePath (Join-Path $dir 'case3.keep.txt') -Encoding utf8
+$c3.Output | Out-File -FilePath (Join-Path $dir 'case4.keep.txt') -Encoding utf8
 
-# ---------- 场景 3：--options pack 覆盖本地 ----------
+# ---------- 场景 5：--options pack ----------
 Reset-Instance 'RSTC-0-5-optpack'
 $i3 = Join-Path $game 'versions\RSTC-0-5-optpack'
 $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5-optpack')
@@ -85,14 +99,45 @@ $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), 
 $c4 = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-optpack', '--update', '--options', 'pack')
 Check '更新 + --options pack' ($c4.Code -eq 0) "exit=$($c4.Code)"
 Check 'options 采用包内版本' ((Get-Content -LiteralPath (Join-Path $i3 'options.txt') -Raw -Encoding utf8) -match 'options v2 changed')
-$c4.Output | Out-File -FilePath (Join-Path $dir 'case4.optpack.txt') -Encoding utf8
+$c4.Output | Out-File -FilePath (Join-Path $dir 'case5.optpack.txt') -Encoding utf8
 
-# ---------- 场景 4：备份保留 3 份 ----------
-for ($i = 0; $i -lt 3; $i++) {
-    $null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5', '--update')
+# ---------- 场景 6：D1 中断 + journal 恢复 + 回滚 ----------
+Reset-Instance 'RSTC-0-5-fail'
+$ifail = Join-Path $game 'versions\RSTC-0-5-fail'
+$null = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min.zip'), '--instance', 'RSTC-0-5-fail')
+[byte[]](9..40) | Set-Content -LiteralPath (Join-Path $ifail 'mods\mytest.jar') -AsByteStream
+$env:RSTC_STAGE0_TEST = '1'
+$env:RSTC_STAGE0_FAIL_AFTER = '1'
+$interrupted = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-fail', '--update')
+$env:RSTC_STAGE0_TEST = $null
+$env:RSTC_STAGE0_FAIL_AFTER = $null
+Check '注入中断后 exit 7' ($interrupted.Code -eq 7) "exit=$($interrupted.Code)"
+$jfail = Get-Content -LiteralPath (Join-Path $ifail '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
+Check '中断后 journal status=writing' ($jfail.status -eq 'writing') "status=$($jfail.status)"
+$interrupted.Output | Out-File -FilePath (Join-Path $dir 'case6.interrupted.txt') -Encoding utf8
+
+$rb = Run-Case @('--rollback', $game, '--instance', 'RSTC-0-5-fail')
+Check '回滚 exit 0' ($rb.Code -eq 0) "exit=$($rb.Code)"
+Check '回滚后 config/a.txt 恢复' (Test-Path -LiteralPath (Join-Path $ifail 'config\a.txt'))
+Check '回滚后 config/b.txt 删除' (-not (Test-Path -LiteralPath (Join-Path $ifail 'config\b.txt')))
+Check '回滚后 mods/min.jar 恢复' (Test-Path -LiteralPath (Join-Path $ifail 'mods\min.jar'))
+Check '回滚后 mods/min2.jar 删除' (-not (Test-Path -LiteralPath (Join-Path $ifail 'mods\min2.jar')))
+$jrb = Get-Content -LiteralPath (Join-Path $ifail '.rstc-journal.json') -Raw -Encoding utf8 | ConvertFrom-Json
+Check '回滚后 journal status=rolledback' ($jrb.status -eq 'rolledback') "status=$($jrb.status)"
+$rb.Output | Out-File -FilePath (Join-Path $dir 'case6.rollback.txt') -Encoding utf8
+
+$recover = Run-Case @('--pack', $game, '--zip', (Join-Path $packs 'pack-min-v2.zip'), '--instance', 'RSTC-0-5-fail', '--update')
+Check '回滚后重跑更新成功' ($recover.Code -eq 0 -and $recover.Output -match 'PACK_APPLY=PASS') "exit=$($recover.Code)"
+
+# ---------- 场景 7：D3 备份保留 3 份（干净目录，4 次产生备份的更新） ----------
+Remove-Item -LiteralPath (Join-Path $game 'rstc-backup') -Recurse -Force -ErrorAction SilentlyContinue
+for ($i = 0; $i -lt 4; $i++) {
+    $zip = if ($i % 2 -eq 0) { 'pack-min.zip' } else { 'pack-min-v2.zip' }
+    $r = Run-Case @('--pack', $game, '--zip', (Join-Path $packs $zip), '--instance', 'RSTC-0-5', '--update')
+    if ($r.Code -ne 0) { Check "第 $($i+1) 次更新" $false "exit=$($r.Code)" }
 }
 $count = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory).Count
-Check '备份保留 3 份' ($count -eq 3) "count=$count"
+Check '备份保留 3 份（4 次真实覆盖后）' ($count -eq 3) "count=$count"
 
 # ---------- 证据 ----------
 $facts = @()
@@ -101,12 +146,14 @@ $facts += "game_dir=$game"
 $facts += 'product_version=' + (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
 $facts += 'powershell=' + $PSVersionTable.PSVersion
 $facts += 'time=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')
+$facts += "checks=$($script:checks)"
 $facts += "failures=$($failures.Count)"
 $facts | Out-File -FilePath (Join-Path $dir 'facts.txt') -Encoding utf8
 Get-ChildItem -LiteralPath $dir -File | Where-Object { $_.Name -notlike 'SHA256SUMS*' } |
     ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)  $($_.Name)" } |
     Out-File -FilePath (Join-Path $dir 'SHA256SUMS.evidence.txt') -Encoding ascii
 
+Write-Host "checks=$($script:checks) failures=$($failures.Count)"
 Write-Host "evidence: $dir"
 if ($failures.Count -gt 0) {
     Write-Host ("FAILED: " + ($failures -join '; ')) -ForegroundColor Red

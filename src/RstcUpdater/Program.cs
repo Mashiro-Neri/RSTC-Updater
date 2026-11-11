@@ -67,6 +67,10 @@ namespace RstcUpdater
                         return await ProvisionAsync(ParseProvisionOptions(args));
                     case "--pack":
                         return Pack(ParsePackOptions(args));
+                    case "--rollback":
+                        return Rollback(ParseInstanceOptions(args));
+                    case "--fetch-pack":
+                        return await FetchPackAsync(ParseFetchOptions(args));
                     case "--help":
                     case "-h":
                         PrintUsage(Console.Out);
@@ -535,6 +539,141 @@ namespace RstcUpdater
             return options;
         }
 
+        private static int Rollback(InstanceRef options)
+        {
+            try
+            {
+                EnsureTargetAllowed(Path.GetFullPath(options.GameDir), true);
+            }
+            catch (UsageException ex)
+            {
+                Console.Error.WriteLine("拒绝执行: " + ex.Message);
+                return ExitUsage;
+            }
+
+            return PackApplier.Rollback(options.GameDir, options.Instance);
+        }
+
+        private static async Task<int> FetchPackAsync(PackFetcher.FetchOptions options)
+        {
+            try
+            {
+                EnsureTargetAllowed(Path.GetFullPath(options.GameDir), true);
+            }
+            catch (UsageException ex)
+            {
+                Console.Error.WriteLine("拒绝执行: " + ex.Message);
+                return ExitUsage;
+            }
+
+            return await PackFetcher.RunAsync(options).ConfigureAwait(false);
+        }
+
+        private static InstanceRef ParseInstanceOptions(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("需要游戏目录");
+            }
+
+            var options = new InstanceRef { GameDir = args[1] };
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--instance" && i + 1 < args.Length)
+                {
+                    options.Instance = args[++i];
+                }
+                else
+                {
+                    throw new UsageException("不认识的参数: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrEmpty(options.Instance))
+            {
+                throw new UsageException("需要 --instance <实例名>");
+            }
+
+            return options;
+        }
+
+        private static PackFetcher.FetchOptions ParseFetchOptions(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--fetch-pack 需要游戏目录");
+            }
+
+            var options = new PackFetcher.FetchOptions { GameDir = args[1] };
+            for (int i = 2; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--release-json":
+                        options.ReleaseJson = NextArgument(args, ref i, "--release-json");
+                        break;
+                    case "--asset-name":
+                        options.AssetName = NextArgument(args, ref i, "--asset-name");
+                        break;
+                    case "--instance":
+                        options.Instance = NextArgument(args, ref i, "--instance");
+                        break;
+                    case "--tag":
+                        options.Tag = NextArgument(args, ref i, "--tag");
+                        break;
+                    case "--update":
+                        options.Update = true;
+                        break;
+                    case "--keep":
+                        options.Keep = NextArgument(args, ref i, "--keep")
+                            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                        break;
+                    case "--options":
+                        options.OptionsMode = ParseKeepOrPack(NextArgument(args, ref i, "--options"), "--options");
+                        break;
+                    case "--servers":
+                        options.ServersMode = ParseKeepOrPack(NextArgument(args, ref i, "--servers"), "--servers");
+                        break;
+                    case "--dry-run":
+                        options.DryRun = true;
+                        break;
+                    case "--keep-zip":
+                        options.KeepZip = true;
+                        break;
+                    default:
+                        throw new UsageException("--fetch-pack 不认识的参数: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrEmpty(options.ReleaseJson))
+            {
+                throw new UsageException("--fetch-pack 需要 --release-json <文件>");
+            }
+
+            if (string.IsNullOrEmpty(options.Instance))
+            {
+                throw new UsageException("--fetch-pack 需要 --instance <实例名>");
+            }
+
+            return options;
+        }
+
+        private static string NextArgument(string[] args, ref int i, string option)
+        {
+            if (i + 1 >= args.Length)
+            {
+                throw new UsageException(option + " 缺少参数");
+            }
+
+            return args[++i];
+        }
+
+        private sealed class InstanceRef
+        {
+            public string GameDir;
+            public string Instance;
+        }
+
         private static int Pack(PackApplier.PackOptions options)
         {
             try
@@ -607,6 +746,14 @@ namespace RstcUpdater
                         break;
                     case "--dry-run":
                         options.DryRun = true;
+                        break;
+                    case "--tag":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--tag 缺少参数");
+                        }
+
+                        options.Tag = args[++i];
                         break;
                     default:
                         throw new UsageException("--pack 不认识的参数: " + args[i]);
@@ -716,7 +863,9 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
             writer.WriteLine("  RstcUpdater.exe --install <空的绝对目录> [--reuse]   # 阶段 0 验证：安装原版 26.3，不下载 Java；--reuse 允许续跑/复用已有目录");
             writer.WriteLine("  RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods 目录>]   # 阶段 0-2：Fabric + A2/A1/B 三份实例 + 启动器配置");
-            writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run]");
+            writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--tag <Tag>] [--dry-run]");
+            writer.WriteLine("  RstcUpdater.exe --fetch-pack <游戏目录> --release-json <文件> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--asset-name <名>] [--keep-zip]");
+            writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
             writer.WriteLine("  RstcUpdater.exe --help");
             writer.WriteLine("");
             writer.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");

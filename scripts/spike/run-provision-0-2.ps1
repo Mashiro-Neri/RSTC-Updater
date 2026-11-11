@@ -31,6 +31,38 @@ $sw.Stop()
     Tee-Object -FilePath (Join-Path $dir 'verify.txt') -Encoding utf8
 $verifyExit = $LASTEXITCODE
 
+# ---------- H1：已存在的启动器配置必须保留（只补隔离键） ----------
+$instA1 = Join-Path $full 'versions\RSTC-0-2-A1'
+New-Item -ItemType Directory -Force (Join-Path $instA1 'PCL') | Out-Null
+"CustomKey:keepme`r`nVersionArgumentIndieV2:False`r`n" | Set-Content -LiteralPath (Join-Path $instA1 'PCL\Setup.ini') -Encoding utf8
+'{"usesGlobal":false,"gameDirType":0,"javaDir":"./.jre21/bin/java.exe"}' |
+    Set-Content -LiteralPath (Join-Path $instA1 'hmclversion.cfg') -Encoding utf8
+
+$c2 = & $exe --provision $full --reuse 2>&1 | Out-String
+$preserveExit = $LASTEXITCODE
+$setup = Get-Content -LiteralPath (Join-Path $instA1 'PCL\Setup.ini') -Raw -Encoding utf8
+$hmcl = Get-Content -LiteralPath (Join-Path $instA1 'hmclversion.cfg') -Raw -Encoding utf8 | ConvertFrom-Json
+$factsExtra = @()
+$factsExtra += "preserve_exit=$preserveExit"
+$factsExtra += "pcl_custom_key_preserved=$([bool]($setup -match 'CustomKey:keepme'))"
+$factsExtra += "pcl_isolation_upserted=$([bool]($setup -match 'VersionArgumentIndieV2:True'))"
+$factsExtra += "hmcl_untouched=$([bool]($hmcl.gameDirType -eq 0 -and $hmcl.javaDir -eq './.jre21/bin/java.exe'))"
+Write-Host ("[PRESERVE] exit=$preserveExit customKey=$($setup -match 'CustomKey:keepme') isolation=$($setup -match 'VersionArgumentIndieV2:True') hmclUntouched=$($hmcl.gameDirType -eq 0)")
+
+# ---------- A2/A1 条件 JVM 参数不应丢失 ----------
+$vanilla = Get-Content -LiteralPath (Join-Path $full 'versions\26.3\26.3.json') -Raw -Encoding utf8 | ConvertFrom-Json
+$vanillaJvmCount = @($vanilla.arguments.jvm).Count
+$vanillaRuleCount = @($vanilla.arguments.jvm | Where-Object { $_ -isnot [string] }).Count
+$a2 = Get-Content -LiteralPath (Join-Path $full 'versions\RSTC-0-2-A2\RSTC-0-2-A2.json') -Raw -Encoding utf8 | ConvertFrom-Json
+$a2JvmCount = @($a2.arguments.jvm).Count
+$a2RuleCount = @($a2.arguments.jvm | Where-Object { $_ -isnot [string] }).Count
+$factsExtra += "vanilla_jvm_entries=$vanillaJvmCount"
+$factsExtra += "vanilla_jvm_rule_objects=$vanillaRuleCount"
+$factsExtra += "a2_jvm_entries=$a2JvmCount"
+$factsExtra += "a2_jvm_rule_objects=$a2RuleCount"
+Write-Host ("[JVM] vanilla=$vanillaJvmCount (rule=$vanillaRuleCount) A2=$a2JvmCount (rule=$a2RuleCount)")
+if ($a2RuleCount -lt $vanillaRuleCount) { Write-Error "A2 丢失条件 JVM 参数（$a2RuleCount < $vanillaRuleCount）"; exit 1 }
+
 $facts = @()
 $facts += "commit=$commit"
 $facts += "game_dir=$full"
@@ -38,6 +70,8 @@ $facts += "mod_source=$ModSource"
 $facts += "provision_exit=$provisionExit"
 $facts += "provision_seconds=$([math]::Round($sw.Elapsed.TotalSeconds, 1))"
 $facts += "verify_exit=$verifyExit"
+$factsExtra | Out-File -FilePath (Join-Path $dir 'preserve.txt') -Encoding utf8
+$facts += $factsExtra
 $facts += 'product_version=' + (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
 $facts += 'os=' + ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName) +
           ' build ' + ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild)

@@ -5,13 +5,15 @@ using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Spectre.Console;
 
 namespace RstcUpdater
 {
     /// <summary>
     /// 阶段 0-4/0-5：把 mrpack（modrinth.index.json + overrides/）铺开进实例目录。
-    /// 只做白名单镜像：只处理 overrides 顶层出现过的路径；支持删除清单、保留清单、备份、journal 与回滚。
+    /// 白名单镜像：只处理 overrides 顶层出现过的路径；支持删除清单、保留清单、备份、journal、回滚。
     /// </summary>
     internal static class PackApplier
     {
@@ -20,10 +22,12 @@ namespace RstcUpdater
             "saves", "screenshots", "logs", "crash-reports", "xaero", "journeymap",
             "Distant_Horizons_server_data", "_modpack_backup", "PCL", "rstc-backup",
             "hmclversion.cfg", "options.txt", "servers.dat", "modrinth.index.json",
-            "RSTC_version.txt", "hmclversion.cfg"
+            "RSTC_version.txt"
         };
 
         private static readonly string[] NeverDeletePrefixes = { "XaeroWaypoints", "update_log_" };
+
+        // ==================== 安装/更新 ====================
 
         public static int Run(PackOptions options)
         {
@@ -37,7 +41,7 @@ namespace RstcUpdater
                 return 2;
             }
 
-            if (string.IsNullOrWhiteSpace(instanceName) || instanceName.IndexOfAny(new[] { '\\', '/', ':', '*' }) >= 0)
+            if (!IsSafeInstanceName(instanceName))
             {
                 Console.Error.WriteLine("实例名不合法: " + instanceName);
                 return 2;
@@ -60,12 +64,65 @@ namespace RstcUpdater
             }
         }
 
+        public static bool IsSafeInstanceName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
+            {
+                return false;
+            }
+
+            return name.IndexOfAny(new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) < 0;
+        }
+
+        /// <summary>把 zip 条目名规范成安全的相对路径；不合法则抛异常（防 zip-slip）。</summary>
+        private static string SafeRelativePath(string entryName)
+        {
+            string name = entryName.Replace('\\', '/');
+            if (name.Length == 0)
+            {
+                throw new InvalidDataException("空条目名");
+            }
+
+            if (name.StartsWith("/", StringComparison.Ordinal) || name.StartsWith("//", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("绝对路径条目: " + entryName);
+            }
+
+            if (name.Contains(":"))
+            {
+                throw new InvalidDataException("条目名含盘符/流: " + entryName);
+            }
+
+            string[] parts = name.Split('/');
+            foreach (string part in parts)
+            {
+                if (part.Length == 0 || part == "." || part == "..")
+                {
+                    throw new InvalidDataException("条目名含空段/相对段: " + entryName);
+                }
+            }
+
+            return string.Join("/", parts);
+        }
+
+        private static string EnsureInside(string root, string rel)
+        {
+            string full = Path.GetFullPath(Path.Combine(root, rel.Replace('/', '\\')));
+            string rootFull = Path.GetFullPath(root).TrimEnd('\\') + "\\";
+            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("目标越界: " + rel);
+            }
+
+            return full;
+        }
+
         private static int Apply(string gameDir, string zipPath, string instanceName, PackOptions options)
         {
             string instanceDir = Path.Combine(gameDir, "versions", instanceName);
+            string instanceFull = Path.GetFullPath(instanceDir);
 
             using (var zip = ZipFile.OpenRead(zipPath))
-            using (var indexStream = new MemoryStream())
             {
                 var packFiles = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
                 ZipArchiveEntry indexEntry = null;
@@ -73,17 +130,13 @@ namespace RstcUpdater
 
                 foreach (var entry in zip.Entries)
                 {
-                    string name = entry.FullName.Replace('\\', '/');
-                    if (name.EndsWith("/", StringComparison.Ordinal))
+                    string raw = entry.FullName.Replace('\\', '/');
+                    if (raw.EndsWith("/", StringComparison.Ordinal))
                     {
                         continue;
                     }
 
-                    if (name.StartsWith("/", StringComparison.Ordinal) || name.Contains("../") || name.Contains("/.."))
-                    {
-                        throw new InvalidDataException("ZIP 条目越界: " + name);
-                    }
-
+                    string name = SafeRelativePath(raw);
                     if (string.Equals(name, "modrinth.index.json", StringComparison.OrdinalIgnoreCase))
                     {
                         indexEntry = entry;
@@ -95,13 +148,12 @@ namespace RstcUpdater
                         continue;
                     }
 
-                    string rel = name.Substring("overrides/".Length);
-                    if (rel.Length == 0)
+                    string rel = SafeRelativePath(name.Substring("overrides/".Length));
+                    if (rel.IndexOf(':') >= 0)
                     {
-                        continue;
+                        throw new InvalidDataException("overrides 条目名含盘符: " + raw);
                     }
 
-                    // 用户要求：发布包不携带 PCL/；即使出现也一律跳过，不写入、不删除玩家本地 PCL/
                     if (rel.StartsWith("PCL/", StringComparison.OrdinalIgnoreCase))
                     {
                         pclSkipped++;
@@ -116,39 +168,34 @@ namespace RstcUpdater
                     throw new InvalidDataException("包内缺少 modrinth.index.json");
                 }
 
-                indexEntry.Open().CopyTo(indexStream);
-                indexStream.Position = 0;
-                string indexJson;
-                using (var reader = new StreamReader(indexStream, Encoding.UTF8))
+                string indexJson = ReadEntry(indexEntry);
+                string versionId = "unknown";
+                using (var doc = JsonDocument.Parse(indexJson))
                 {
-                    indexJson = reader.ReadToEnd();
-                }
-
-                string versionId;
-                using (var doc = System.Text.Json.JsonDocument.Parse(indexJson))
-                {
-                    versionId = doc.RootElement.TryGetProperty("versionId", out var v) ? v.GetString() : null;
-                    if (string.IsNullOrEmpty(versionId))
+                    if (doc.RootElement.TryGetProperty("versionId", out var v) && v.GetString() != null)
                     {
-                        versionId = "unknown";
+                        versionId = v.GetString();
                     }
                 }
+
+                string tag = string.IsNullOrEmpty(options.Tag) ? versionId : options.Tag;
 
                 // ---- 计划 ----
                 var writes = new List<string>();
                 var overwrites = new List<string>();
-                var backups = new List<string>(); // 相对路径，需要备份（覆盖 + 删除）
+                var newFiles = new List<string>();
+                var backups = new List<string>();
                 var deletes = new List<string>();
                 var keptByUser = new List<string>();
                 var conflicts = new List<string>();
                 int reused = 0;
 
-                foreach (var rel in packFiles.Keys.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
+                foreach (string rel in packFiles.Keys.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
                 {
-                    string dest = Path.Combine(instanceDir, rel.Replace('/', '\\'));
+                    string dest = EnsureInside(instanceFull, rel);
                     if (File.Exists(dest))
                     {
-                        bool same = SameFile(dest, packFiles[rel]);
+                        bool same = SameContent(dest, packFiles[rel]);
                         string top = TopSegment(rel);
                         if (IsOptionsFile(rel))
                         {
@@ -169,7 +216,6 @@ namespace RstcUpdater
                         }
                         else if (same)
                         {
-                            // 复用已有文件：内容一致则不重写、不备份
                             reused++;
                             continue;
                         }
@@ -177,13 +223,16 @@ namespace RstcUpdater
                         overwrites.Add(rel);
                         backups.Add(rel);
                     }
+                    else
+                    {
+                        newFiles.Add(rel);
+                    }
 
                     writes.Add(rel);
                 }
 
-                if (options.Update && Directory.Exists(instanceDir))
+                if (options.Update && Directory.Exists(instanceFull))
                 {
-                    // 删除扫描的基线必须是“包内的顶层路径”，不能用 writes（复用优化后 writes 可能为空）
                     var packedSet = new HashSet<string>(packFiles.Keys, StringComparer.OrdinalIgnoreCase);
                     var topLevels = new HashSet<string>(packFiles.Keys.Select(TopSegment), StringComparer.OrdinalIgnoreCase);
                     foreach (string top in topLevels)
@@ -193,7 +242,7 @@ namespace RstcUpdater
                             continue;
                         }
 
-                        string dir = Path.Combine(instanceDir, top);
+                        string dir = EnsureInside(instanceFull, top);
                         if (!Directory.Exists(dir))
                         {
                             continue;
@@ -201,13 +250,8 @@ namespace RstcUpdater
 
                         foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
                         {
-                            string rel = file.Substring(instanceDir.Length + 1).Replace('\\', '/');
-                            if (packedSet.Contains(rel))
-                            {
-                                continue;
-                            }
-
-                            if (IsNeverDelete(rel))
+                            string rel = file.Substring(instanceFull.Length + 1).Replace('\\', '/');
+                            if (packedSet.Contains(rel) || IsNeverDelete(rel))
                             {
                                 continue;
                             }
@@ -229,12 +273,12 @@ namespace RstcUpdater
                 table.AddColumn("数量");
                 table.AddRow("包内文件（overrides）", packFiles.Count.ToString());
                 table.AddRow("PCL/ 跳过（用户要求）", pclSkipped.ToString());
-                table.AddRow("写入", writes.Count.ToString() + "（其中覆盖 " + overwrites.Count + "）");
+                table.AddRow("写入", writes.Count.ToString() + "（覆盖 " + overwrites.Count + "，新建 " + newFiles.Count + "）");
                 table.AddRow("复用（内容一致不重写）", reused.ToString());
                 table.AddRow("删除", deletes.Count.ToString() + "（更新模式）");
                 table.AddRow("玩家保留", keptByUser.Count.ToString());
                 table.AddRow("options/servers 冲突（保留本地）", conflicts.Count.ToString());
-                table.AddRow("版本", versionId);
+                table.AddRow("版本", versionId + "（tag " + tag + "）");
                 AnsiConsole.Write(table);
 
                 foreach (string c in conflicts)
@@ -244,12 +288,12 @@ namespace RstcUpdater
 
                 if (options.DryRun)
                 {
-                    foreach (string d in deletes.OrderBy(s => s))
+                    foreach (string d in deletes.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
                     {
                         Console.WriteLine("DELETE " + d);
                     }
 
-                    foreach (string w in writes.OrderBy(s => s))
+                    foreach (string w in writes.OrderBy(s => s, StringComparer.OrdinalIgnoreCase))
                     {
                         Console.WriteLine("WRITE  " + w);
                     }
@@ -258,23 +302,33 @@ namespace RstcUpdater
                     return 0;
                 }
 
-                Directory.CreateDirectory(instanceDir);
+                Directory.CreateDirectory(instanceFull);
 
-                // ---- 备份 + journal ----
-                string backupRoot = Path.Combine(gameDir, "rstc-backup", DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                string backupRoot = Path.Combine(gameDir, "rstc-backup", DateTime.Now.ToString("yyyyMMdd_HHmmss_fff"));
                 string backupFiles = Path.Combine(backupRoot, "files");
-                var journalPath = Path.Combine(instanceDir, ".rstc-journal.json");
-                var journal = new JsonObjectBuilder();
-                journal.Add("versionId", versionId);
-                journal.Add("zip", zipPath);
-                journal.Add("startedAt", DateTime.Now.ToString("o"));
-                journal.Add("writes", writes);
-                journal.Add("deletes", deletes);
-                File.WriteAllText(journalPath, journal.Build(), new UTF8Encoding(false));
+                string journalPath = Path.Combine(instanceFull, ".rstc-journal.json");
 
+                var journal = new JsonObject
+                {
+                    ["versionId"] = versionId,
+                    ["tag"] = tag,
+                    ["zip"] = zipPath,
+                    ["instance"] = instanceName,
+                    ["backupPath"] = backupRoot,
+                    ["status"] = "writing",
+                    ["startedAt"] = DateTime.Now.ToString("o"),
+                    ["writes"] = ToJsonArray(writes),
+                    ["overwrites"] = ToJsonArray(overwrites),
+                    ["newFiles"] = ToJsonArray(newFiles),
+                    ["deletes"] = ToJsonArray(deletes)
+                };
+                File.WriteAllText(journalPath, journal.ToJsonString(), new UTF8Encoding(false));
+
+                // 备份（覆盖 + 删除）
+                int backedUp = 0;
                 foreach (string rel in backups.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    string src = Path.Combine(instanceDir, rel.Replace('/', '\\'));
+                    string src = EnsureInside(instanceFull, rel);
                     if (!File.Exists(src))
                     {
                         continue;
@@ -283,45 +337,52 @@ namespace RstcUpdater
                     string dst = Path.Combine(backupFiles, rel.Replace('/', '\\'));
                     Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? backupFiles);
                     File.Copy(src, dst, true);
+                    backedUp++;
                 }
 
-                AnsiConsole.MarkupLine("[green]备份[/] " + Markup.Escape(backupRoot));
+                AnsiConsole.MarkupLine("[green]备份[/] " + Markup.Escape(backupRoot) + "（" + backedUp + " 个文件）");
 
-                // ---- 写入 ----
+                // 写入（测试钩子：环境变量控制写入 N 个后抛中断，用于验证 journal/回滚）
+                int failAfter = GetTestFailAfter();
+                int written = 0;
                 foreach (string rel in writes)
                 {
-                    string dest = Path.Combine(instanceDir, rel.Replace('/', '\\'));
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? instanceDir);
+                    if (failAfter > 0 && written >= failAfter)
+                    {
+                        throw new IOException("测试注入：写入 " + written + " 个后中断");
+                    }
+
+                    string dest = EnsureInside(instanceFull, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? instanceFull);
                     using (var input = packFiles[rel].Open())
                     using (var output = File.Create(dest))
                     {
                         input.CopyTo(output);
                     }
+
+                    written++;
                 }
 
-                // ---- 删除 ----
                 foreach (string rel in deletes)
                 {
-                    string dest = Path.Combine(instanceDir, rel.Replace('/', '\\'));
+                    string dest = EnsureInside(instanceFull, rel);
                     if (File.Exists(dest))
                     {
                         File.Delete(dest);
                     }
                 }
 
-                // ---- 本地状态 ----
-                File.WriteAllText(Path.Combine(instanceDir, "modrinth.index.json"), indexJson, new UTF8Encoding(false));
-                File.WriteAllText(Path.Combine(instanceDir, "RSTC_version.txt"), versionId, new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(instanceFull, "modrinth.index.json"), indexJson, new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(instanceFull, "RSTC_version.txt"), tag, new UTF8Encoding(false));
 
-                journal.Add("finishedAt", DateTime.Now.ToString("o"));
-                journal.Add("status", "done");
-                File.WriteAllText(journalPath, journal.Build(), new UTF8Encoding(false));
+                journal["status"] = "done";
+                journal["finishedAt"] = DateTime.Now.ToString("o");
+                File.WriteAllText(journalPath, journal.ToJsonString(), new UTF8Encoding(false));
 
-                // ---- 校验 ----
-                int missing = writes.Count(rel => !File.Exists(Path.Combine(instanceDir, rel.Replace('/', '\\'))));
-                int notDeleted = deletes.Count(rel => File.Exists(Path.Combine(instanceDir, rel.Replace('/', '\\'))));
-                int mods = Directory.Exists(Path.Combine(instanceDir, "mods"))
-                    ? Directory.EnumerateFiles(Path.Combine(instanceDir, "mods"), "*.jar").Count()
+                int missing = writes.Count(rel => !File.Exists(EnsureInside(instanceFull, rel)));
+                int notDeleted = deletes.Count(rel => File.Exists(EnsureInside(instanceFull, rel)));
+                int mods = Directory.Exists(Path.Combine(instanceFull, "mods"))
+                    ? Directory.EnumerateFiles(Path.Combine(instanceFull, "mods"), "*.jar").Count()
                     : 0;
 
                 var result = new Table().Border(TableBorder.Rounded);
@@ -333,7 +394,10 @@ namespace RstcUpdater
                 result.AddRow("备份目录", backupRoot);
                 AnsiConsole.Write(result);
 
-                TrimBackups(gameDir);
+                if (missing == 0 && notDeleted == 0)
+                {
+                    TrimBackups(gameDir);
+                }
 
                 if (missing != 0 || notDeleted != 0)
                 {
@@ -345,6 +409,118 @@ namespace RstcUpdater
                 return 0;
             }
         }
+
+        private static int GetTestFailAfter()
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable("RSTC_STAGE0_TEST"), "1", StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            string raw = Environment.GetEnvironmentVariable("RSTC_STAGE0_FAIL_AFTER");
+            return int.TryParse(raw, out int n) ? n : 0;
+        }
+
+        private static JsonArray ToJsonArray(IEnumerable<string> values)
+        {
+            var array = new JsonArray();
+            foreach (string v in values)
+            {
+                array.Add(v);
+            }
+
+            return array;
+        }
+
+        private static string ReadEntry(ZipArchiveEntry entry)
+        {
+            using (var stream = entry.Open())
+            using (var reader = new StreamReader(stream, Encoding.UTF8))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+
+        // ==================== 回滚 ====================
+
+        public static int Rollback(string gameDir, string instanceName)
+        {
+            string instanceDir = Path.GetFullPath(Path.Combine(gameDir, "versions", instanceName));
+            string journalPath = Path.Combine(instanceDir, ".rstc-journal.json");
+            if (!File.Exists(journalPath))
+            {
+                Console.Error.WriteLine("没有 journal，无法回滚: " + journalPath);
+                return 2;
+            }
+
+            JsonObject journal;
+            try
+            {
+                journal = JsonNode.Parse(File.ReadAllText(journalPath, Encoding.UTF8)) as JsonObject
+                          ?? throw new FormatException("journal 不是对象");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("journal 解析失败: " + ex.Message);
+                return 7;
+            }
+
+            string status = journal["status"]?.GetValue<string>() ?? "";
+            if (string.Equals(status, "rolledback", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine("已经回滚过");
+                return 2;
+            }
+
+            string backupRoot = journal["backupPath"]?.GetValue<string>();
+            var overwrites = journal["overwrites"]?.AsArray().Select(x => x.GetValue<string>()).ToList() ?? new List<string>();
+            var newFiles = journal["newFiles"]?.AsArray().Select(x => x.GetValue<string>()).ToList() ?? new List<string>();
+            var deletes = journal["deletes"]?.AsArray().Select(x => x.GetValue<string>()).ToList() ?? new List<string>();
+
+            try
+            {
+                int restored = 0;
+                foreach (string rel in overwrites.Concat(deletes).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    string src = Path.Combine(backupRoot ?? "", "files", rel.Replace('/', '\\'));
+                    if (!File.Exists(src))
+                    {
+                        Console.Error.WriteLine("备份缺失，无法恢复: " + rel);
+                        continue;
+                    }
+
+                    string dest = EnsureInside(instanceDir, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? instanceDir);
+                    File.Copy(src, dest, true);
+                    restored++;
+                }
+
+                int removed = 0;
+                foreach (string rel in newFiles)
+                {
+                    string dest = EnsureInside(instanceDir, rel);
+                    if (File.Exists(dest))
+                    {
+                        File.Delete(dest);
+                        removed++;
+                    }
+                }
+
+                journal["status"] = "rolledback";
+                journal["rolledBackAt"] = DateTime.Now.ToString("o");
+                File.WriteAllText(journalPath, journal.ToJsonString(), new UTF8Encoding(false));
+
+                AnsiConsole.MarkupLine("[green]ROLLBACK=PASS[/] 恢复 " + restored + " 个文件，删除新建 " + removed + " 个");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("回滚失败: " + ex.GetType().Name + ": " + ex.Message);
+                return 7;
+            }
+        }
+
+        // ==================== 工具函数 ====================
 
         private static bool IsOptionsFile(string rel)
         {
@@ -381,7 +557,7 @@ namespace RstcUpdater
             return idx < 0 ? rel : rel.Substring(0, idx);
         }
 
-        private static bool SameFile(string path, ZipArchiveEntry entry)
+        private static bool SameContent(string path, ZipArchiveEntry entry)
         {
             var local = new FileInfo(path);
             if (local.Length != entry.Length)
@@ -391,10 +567,10 @@ namespace RstcUpdater
 
             using (var stream = entry.Open())
             {
-                string remote = ToHex(SHA1.Create().ComputeHash(stream));
+                string remote = ToHex(SHA256.Create().ComputeHash(stream));
                 using (var localStream = File.OpenRead(path))
                 {
-                    string actual = ToHex(SHA1.Create().ComputeHash(localStream));
+                    string actual = ToHex(SHA256.Create().ComputeHash(localStream));
                     return string.Equals(remote, actual, StringComparison.OrdinalIgnoreCase);
                 }
             }
@@ -435,45 +611,6 @@ namespace RstcUpdater
             }
         }
 
-        private sealed class JsonObjectBuilder
-        {
-            private readonly List<string> _pairs = new List<string>();
-
-            public void Add(string key, string value)
-            {
-                _pairs.Add(JsonString(key) + ":" + JsonString(value));
-            }
-
-            public void Add(string key, IEnumerable<string> values)
-            {
-                _pairs.Add(JsonString(key) + ":[" + string.Join(",", values.Select(JsonString)) + "]");
-            }
-
-            public string Build()
-            {
-                return "{" + string.Join(",", _pairs) + "}";
-            }
-
-            private static string JsonString(string s)
-            {
-                var sb = new StringBuilder("\"");
-                foreach (char c in s ?? "")
-                {
-                    switch (c)
-                    {
-                        case '"': sb.Append("\\\""); break;
-                        case '\\': sb.Append("\\\\"); break;
-                        case '\n': sb.Append("\\n"); break;
-                        case '\r': sb.Append("\\r"); break;
-                        case '\t': sb.Append("\\t"); break;
-                        default: sb.Append(c); break;
-                    }
-                }
-
-                return sb.Append('"').ToString();
-            }
-        }
-
         internal sealed class PackOptions
         {
             public string GameDir;
@@ -484,6 +621,7 @@ namespace RstcUpdater
             public string OptionsMode = "keep";
             public string ServersMode = "keep";
             public bool DryRun;
+            public string Tag;
         }
     }
 }

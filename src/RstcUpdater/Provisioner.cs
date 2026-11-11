@@ -220,13 +220,13 @@ namespace RstcUpdater
                 var bArgs = new JsonObject();
                 if (fabricJvmArgs.Count > 0)
                 {
-                    var jvm = new JsonArray();
+                    var bJvm = new JsonArray();
                     foreach (string arg in fabricJvmArgs)
                     {
-                        jvm.Add(arg);
+                        bJvm.Add(arg);
                     }
 
-                    bArgs["jvm"] = jvm;
+                    bArgs["jvm"] = bJvm;
                 }
 
                 b["arguments"] = bArgs;
@@ -242,16 +242,33 @@ namespace RstcUpdater
             node["jar"] = variant == "A2" ? name : TargetVersion;
             node["libraries"] = MergeLibraries(vanilla["libraries"] as JsonArray, fabricLibs);
 
-            var arguments = node["arguments"] as JsonObject ?? new JsonObject();
-            var jvmArgs = GetStringArray(arguments["jvm"]);
-            JArrayAppendDistinct(jvmArgs, fabricJvmArgs);
-            var jvmArray = new JsonArray();
-            foreach (string arg in jvmArgs)
+            // 深拷贝原版 arguments（保留 rules 对象等条件 JVM 参数），只追加 Fabric 的 JVM 参数
+            var arguments = node["arguments"] as JsonObject;
+            if (arguments == null)
             {
-                jvmArray.Add(arg);
+                arguments = new JsonObject();
+            }
+            else
+            {
+                arguments = (JsonObject)arguments.DeepClone();
             }
 
-            arguments["jvm"] = jvmArray;
+            var jvm = arguments["jvm"] as JsonArray;
+            if (jvm == null)
+            {
+                jvm = new JsonArray();
+                arguments["jvm"] = jvm;
+            }
+
+            foreach (string arg in fabricJvmArgs)
+            {
+                bool exists = jvm.Any(n => n is JsonValue value && value.TryGetValue<string>(out string s) && s == arg);
+                if (!exists)
+                {
+                    jvm.Add(arg);
+                }
+            }
+
             node["arguments"] = arguments;
             return node;
         }
@@ -391,20 +408,49 @@ namespace RstcUpdater
         {
             string pclDir = Path.Combine(instanceDir, "PCL");
             Directory.CreateDirectory(pclDir);
-            string setupIni = string.Join("\r\n", new[]
-            {
-                "VersionVanillaName:" + TargetVersion,
-                "VersionFabric:" + FabricLoader,
-                "Info:测试实例 " + TargetVersion + " Fabric " + FabricLoader + " (" + variant + ")",
-                "ReleaseTime:2026-09-15 19:23:02",
-                "VersionArgumentIndieV2:True",
-                "VersionArgumentIndie:1",
-                ""
-            });
-            File.WriteAllText(Path.Combine(pclDir, "Setup.ini"), setupIni, new UTF8Encoding(false));
+            string setupPath = Path.Combine(pclDir, "Setup.ini");
 
-            string hmclCfg = "{\r\n  \"usesGlobal\": false,\r\n  \"gameDirType\": 1\r\n}\r\n";
-            File.WriteAllText(Path.Combine(instanceDir, "hmclversion.cfg"), hmclCfg, new UTF8Encoding(false));
+            // PCL：已存在则只补隔离键，保留玩家/启动器原有字段；不存在才写最小模板
+            var values = new List<string>();
+            if (File.Exists(setupPath))
+            {
+                foreach (string line in File.ReadAllLines(setupPath, Encoding.UTF8))
+                {
+                    values.Add(line);
+                }
+            }
+
+            UpsertIni(values, "VersionVanillaName", TargetVersion);
+            UpsertIni(values, "VersionFabric", FabricLoader);
+            UpsertIni(values, "Info", "测试实例 " + TargetVersion + " Fabric " + FabricLoader + " (" + variant + ")");
+            UpsertIni(values, "VersionArgumentIndieV2", "True");
+            UpsertIni(values, "VersionArgumentIndie", "1");
+            File.WriteAllText(setupPath, string.Join("\r\n", values) + "\r\n", new UTF8Encoding(false));
+
+            // HMCL：已存在则只读不改（玩家的内存/Java 设置不能被覆盖）
+            string hmclPath = Path.Combine(instanceDir, "hmclversion.cfg");
+            if (!File.Exists(hmclPath))
+            {
+                File.WriteAllText(
+                    hmclPath,
+                    "{\r\n  \"usesGlobal\": false,\r\n  \"gameDirType\": 1\r\n}\r\n",
+                    new UTF8Encoding(false));
+            }
+        }
+
+        private static void UpsertIni(List<string> lines, string key, string value)
+        {
+            string prefix = key + ":";
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (lines[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    lines[i] = prefix + value;
+                    return;
+                }
+            }
+
+            lines.Add(prefix + value);
         }
 
         internal sealed class ProvisionOptions
