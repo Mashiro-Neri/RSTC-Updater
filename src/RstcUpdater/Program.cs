@@ -699,6 +699,7 @@ namespace RstcUpdater
             string gameDir = args[1];
             string from = null;
             string to = null;
+            bool overwrite = false;
             List<string> keys = null;
             for (int i = 2; i < args.Length; i++)
             {
@@ -713,6 +714,9 @@ namespace RstcUpdater
                     case "--categories":
                         keys = NextArgument(args, ref i, "--categories")
                             .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                        break;
+                    case "--overwrite":
+                        overwrite = true;
                         break;
                     default:
                         throw new UsageException("--migrate-v1 不认识的参数: " + args[i]);
@@ -732,7 +736,7 @@ namespace RstcUpdater
                 throw new UsageException("没有匹配的迁移类别");
             }
 
-            if (!Migration.Run(gameDir, from, to, categories, out string summary))
+            if (!Migration.Run(gameDir, from, to, categories, overwrite, out string summary))
             {
                 Console.Error.WriteLine(summary);
                 return 2;
@@ -1042,7 +1046,7 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
             writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程");
             writer.WriteLine("  RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run] [--force]");
-            writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings]");
+            writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings] [--overwrite]");
             writer.WriteLine("  RstcUpdater.exe --check-self   # 检查更新器自身更新");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");

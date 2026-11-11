@@ -16,6 +16,13 @@ namespace RstcUpdater
         {
             get
             {
+                // 测试/便携模式：可用 RSTC_CONFIG_DIR 覆盖配置目录
+                string overrideDir = Environment.GetEnvironmentVariable("RSTC_CONFIG_DIR");
+                if (!string.IsNullOrEmpty(overrideDir))
+                {
+                    return overrideDir;
+                }
+
                 string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 return Path.Combine(appData, "RSTC-Updater");
             }

@@ -669,14 +669,14 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | Release 客户端（缓存 + 403 回退 + token） | 已实现 | `RSTC_GITHUB_TOKEN` 可选；无网时标注"来自缓存" |
 | **安装到新目录** | 已实现（CLI `--install-v1` + 菜单） | 原版 26.3（可续跑/重试）→ **先校验包 MC 依赖** → Fabric → A2 实例 → 应用 → 完成信息 |
 | 整包更新 | 已实现（CLI `--update-v1` + 菜单） | 版本比较 → 下载/sha256 → **计划预览（删除清单/冲突）** → 勾选保留 → options/servers 冲突选择 → 应用（备份/journal）；Release 成功路径待 6.0 |
-| 从旧实例迁移 | 已实现（同 `.minecraft` 内；跨目录待后续） | 类别多选（存档/截图/地图含 `XaeroWaypoints*`/DH 缓存/设置与键位）→ 复制（源不动）→ 结果清单 |
+| 从旧实例迁移 | 已实现（同 `.minecraft` 内；跨目录待后续） | 类别多选（存档/截图/地图含全部 `XaeroWaypoints*`/DH 缓存/设置与键位）→ **默认拒绝覆盖**；显式允许时先把目标同名文件备份到 `rstc-backup/migrate_*`，再复制（源不动） |
 | 关键文件检查 | 已实现 | 10 项 + mods 计数 |
 | 检查更新器更新 | 已实现（检查 + 替换骨架） | 比较 `RSTC-Updater-*.zip` 资产；最新仍 v4.11（无该资产）→ 正确显示"已是最新"；v5 发布后自动下载、退出后 `.bat` 替换 |
-| 自更新 | 已实现骨架（待 v5 发布资产验证） | 下载 → sha256 → 解压 → `replace.bat` 等进程退出后覆盖并重启 |
+| 自更新 | 已实现骨架（待 v5 发布资产验证） | 下载 → sha256 → 解压校验 exe → **备份当前安装目录** → `.bat` robocopy 覆盖，失败自动回滚备份并重启 |
 
 **安装流程实测**：26.3 夹具包成功装出实例（`PACK_APPLY=PASS`）；真实 Release 路径在 6.0 发布前会因「5.5 基于 1.21.10」被正确拦截（exit 5，不建实例）。证据：`evidence/v1/install-flow-20261111_232852/`。
 
-**V1 端到端冒烟（17 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 迁移（内容哈希一致、源不动）→ 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
+**V1 端到端冒烟（26 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 越界 zip 拒绝不崩溃 → 隔离检测按实际值 → 迁移默认拒绝覆盖 / 显式覆盖前备份 / 两个 `XaeroWaypoints*` 都迁移 / 源不动 / 内容哈希一致 → 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
 
 ---
 

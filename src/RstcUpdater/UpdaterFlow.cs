@@ -47,6 +47,16 @@ namespace RstcUpdater
         public bool UpToDate;
     }
 
+    internal sealed class FlowFailureException : Exception
+    {
+        public readonly int Code;
+
+        public FlowFailureException(int code, string message) : base(message)
+        {
+            Code = code;
+        }
+    }
+
     /// <summary>V1 整包更新：版本比较 → 下载/校验 → 计划预览 → 应用。</summary>
     internal static class UpdaterFlow
     {
@@ -123,33 +133,44 @@ namespace RstcUpdater
             return check;
         }
 
-        /// <summary>下载 + 计划预览；失败返回 null（错误已打印）。</summary>
+        /// <summary>下载 + 计划预览；失败抛 FlowFailureException（带退出码）。</summary>
         public static async Task<PreparedUpdate> PrepareAsync(UpdateOptions options)
+        {
+            try
+            {
+                return await PrepareCoreAsync(options).ConfigureAwait(false);
+            }
+            catch (FlowFailureException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new FlowFailureException(7, "更新准备失败: " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        private static async Task<PreparedUpdate> PrepareCoreAsync(UpdateOptions options)
         {
             string gameDir = Path.GetFullPath(options.GameDir);
             if (!Directory.Exists(gameDir))
             {
-                Console.Error.WriteLine("游戏目录不存在: " + gameDir);
-                return null;
+                throw new FlowFailureException(2, "游戏目录不存在: " + gameDir);
             }
 
             if (!PackApplier.IsSafeInstanceName(options.Instance))
             {
-                Console.Error.WriteLine("实例名不合法: " + options.Instance);
-                return null;
+                throw new FlowFailureException(2, "实例名不合法: " + options.Instance);
             }
 
             if (!TryReadLocal(gameDir, options.Instance, out string versionId, out string tag, out string mc))
             {
-                Console.Error.WriteLine("本地实例不存在或状态文件缺失: " + options.Instance);
-                return null;
+                throw new FlowFailureException(2, "本地实例不存在或状态文件缺失: " + options.Instance);
             }
 
             if (!string.Equals(mc, Provisioner.TargetVersion, StringComparison.OrdinalIgnoreCase))
             {
-                Console.Error.WriteLine("本地 MC 版本为 " + (mc ?? "未知") + "，不是 " + Provisioner.TargetVersion +
-                                        "，请用「安装到新目录」");
-                return null;
+                throw new FlowFailureException(5, "本地 MC 版本为 " + (mc ?? "未知") + "，不是 " + Provisioner.TargetVersion + "，请用「安装到新目录」");
             }
 
             AnsiConsole.MarkupLine("[grey]本地: " + Markup.Escape(options.Instance) + " / 版本 " +
@@ -171,8 +192,7 @@ namespace RstcUpdater
                 ReleaseInfo release = await ReleaseClient.GetLatestAsync(ReleaseClient.PackRepo).ConfigureAwait(false);
                 if (release == null)
                 {
-                    Console.Error.WriteLine("无法获取远端发布信息（网络/限流且无缓存）");
-                    return null;
+                    throw new FlowFailureException(5, "无法获取远端发布信息（网络/限流且无缓存）");
                 }
 
                 prepared.RemoteTag = release.Tag;
@@ -193,7 +213,7 @@ namespace RstcUpdater
                 PackAssetRef assetRef = PackFetcher.ResolveAsset(releaseJson, null);
                 if (assetRef == null)
                 {
-                    return null;
+                    throw new FlowFailureException(5, "Release 中没有 RSTC-*.zip 资产");
                 }
 
                 prepared.ZipPath = await PackFetcher.DownloadAssetAsync(gameDir, assetRef).ConfigureAwait(false);
@@ -204,8 +224,7 @@ namespace RstcUpdater
             var meta = PackApplier.ReadMetadata(prepared.ZipPath);
             if (meta == null)
             {
-                Console.Error.WriteLine("包缺少 modrinth.index.json");
-                return null;
+                throw new FlowFailureException(5, "包缺少 modrinth.index.json");
             }
 
             if (prepared.RemoteVersion == null)
@@ -220,9 +239,7 @@ namespace RstcUpdater
 
             if (!string.Equals(meta.Minecraft, Provisioner.TargetVersion, StringComparison.OrdinalIgnoreCase))
             {
-                Console.Error.WriteLine("该包基于 Minecraft " + meta.Minecraft + "，与 V1 目标 " +
-                                        Provisioner.TargetVersion + " 不符");
-                return null;
+                throw new FlowFailureException(5, "该包基于 Minecraft " + meta.Minecraft + "，与 V1 目标 " + Provisioner.TargetVersion + " 不符");
             }
 
             if (!options.Force && !string.IsNullOrEmpty(prepared.RemoteVersion) &&
@@ -292,26 +309,39 @@ namespace RstcUpdater
         /// <summary>非交互入口（CLI/测试）：Prepare + 应用。</summary>
         public static async Task<int> RunAsync(UpdateOptions options)
         {
-            PreparedUpdate prepared = await PrepareAsync(options).ConfigureAwait(false);
-            if (prepared == null)
+            try
             {
-                return 5;
-            }
+                PreparedUpdate prepared = await PrepareAsync(options).ConfigureAwait(false);
+                if (prepared == null)
+                {
+                    return 7;
+                }
 
-            if (prepared.UpToDate)
+                if (prepared.UpToDate)
+                {
+                    CleanupZip(prepared);
+                    return 0;
+                }
+
+                if (options.DryRun)
+                {
+                    AnsiConsole.MarkupLine("[yellow]DRY-RUN[/] 未做任何修改");
+                    CleanupZip(prepared);
+                    return 0;
+                }
+
+                return ApplyPrepared(prepared, options.Keep, options.OptionsMode, options.ServersMode);
+            }
+            catch (FlowFailureException ex)
             {
-                CleanupZip(prepared);
-                return 0;
+                Console.Error.WriteLine(ex.Message);
+                return ex.Code;
             }
-
-            if (options.DryRun)
+            catch (Exception ex)
             {
-                AnsiConsole.MarkupLine("[yellow]DRY-RUN[/] 未做任何修改");
-                CleanupZip(prepared);
-                return 0;
+                Console.Error.WriteLine("update 失败: " + ex.GetType().Name + ": " + ex.Message);
+                return 7;
             }
-
-            return ApplyPrepared(prepared, options.Keep, options.OptionsMode, options.ServersMode);
         }
 
         private static void PrintPlan(PreparedUpdate prepared)

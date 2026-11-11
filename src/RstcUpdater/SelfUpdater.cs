@@ -119,7 +119,10 @@ namespace RstcUpdater
             return check;
         }
 
-        /// <summary>下载并替换自身（通过临时 .bat 在进程退出后覆盖）。返回 0 表示已安排替换。</summary>
+        /// <summary>
+        /// 下载并替换自身：sha256 强校验 → 解压 → 校验新 exe → 备份当前安装目录 →
+        /// 用 .bat 在进程退出后 robocopy 覆盖，失败则回滚备份并重启。
+        /// </summary>
         public static async Task<int> ApplyAsync(SelfUpdateCheck check)
         {
             if (check == null || !check.UpdateAvailable || string.IsNullOrEmpty(check.AssetUrl))
@@ -147,14 +150,50 @@ namespace RstcUpdater
             string extractDir = Path.Combine(tempBase, "new");
             Directory.CreateDirectory(extractDir);
             ZipFile.ExtractToDirectory(zipPath, extractDir);
+            if (!File.Exists(Path.Combine(extractDir, "RstcUpdater.exe")))
+            {
+                Console.Error.WriteLine("新版本 zip 中缺少 RstcUpdater.exe，拒绝替换");
+                return 7;
+            }
+
+            // 备份当前安装目录（仅文件，跳过 .selfupdate 临时目录）
+            string backupDir = Path.Combine(tempBase, "backup");
+            Directory.CreateDirectory(backupDir);
+            int backedUp = 0;
+            foreach (string file in Directory.EnumerateFiles(installDir, "*", SearchOption.AllDirectories))
+            {
+                if (file.StartsWith(tempBase, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string rel = file.Substring(installDir.Length).TrimStart('\\');
+                string dst = Path.Combine(backupDir, rel);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? backupDir);
+                    File.Copy(file, dst, true);
+                    backedUp++;
+                }
+                catch (IOException)
+                {
+                }
+            }
 
             string bat = Path.Combine(tempBase, "replace.bat");
             var script = new StringBuilder();
             script.AppendLine("@echo off");
             script.AppendLine("timeout /t 2 /nobreak >nul");
-            script.AppendLine("cd /d \"" + installDir + "\"");
-            script.AppendLine("xcopy /E /Y \"" + extractDir + "\\*\" \"" + installDir + "\\\" >nul");
+            script.AppendLine("robocopy \"" + extractDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
+            script.AppendLine("if errorlevel 8 goto fail");
             script.AppendLine("start \"\" \"" + exePath + "\"");
+            script.AppendLine("goto done");
+            script.AppendLine(":fail");
+            script.AppendLine("robocopy \"" + backupDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
+            script.AppendLine("start \"\" \"" + exePath + "\"");
+            script.AppendLine(":done");
+            script.AppendLine("timeout /t 3 /nobreak >nul");
+            script.AppendLine("rd /s /q \"" + tempBase + "\"");
             script.AppendLine("del \"%~f0\"");
             File.WriteAllText(bat, script.ToString(), Encoding.Default);
 
@@ -166,7 +205,7 @@ namespace RstcUpdater
                 WindowStyle = ProcessWindowStyle.Hidden
             };
             Process.Start(psi);
-            AnsiConsole.MarkupLine("[green]已下载新版本，程序退出后将自动替换并重启。[/]");
+            AnsiConsole.MarkupLine("[green]已下载新版本（备份 " + backedUp + " 个文件），程序退出后将自动替换并重启；失败会回滚。[/]");
             return 0;
         }
     }

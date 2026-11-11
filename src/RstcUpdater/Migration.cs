@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using Spectre.Console;
 
 namespace RstcUpdater
 {
-    /// <summary>V1 白名单迁移：只搬玩家数据类别，不搬 mods/config（整合包自带）。</summary>
+    /// <summary>
+    /// V1 白名单迁移：只搬玩家数据类别，不搬 mods/config（整合包自带）。
+    /// 覆盖目标已有文件时：默认拒绝；显式覆盖前先把目标文件备份到 rstc-backup/migrate_*。
+    /// </summary>
     internal static class Migration
     {
         internal sealed class Category
@@ -32,7 +34,6 @@ namespace RstcUpdater
             new Category { Key = "settings", Name = "游戏设置与键位", Paths = new[] { "options.txt", "servers.dat" } }
         };
 
-        /// <summary>扫描同目录下可作为迁移源的实例（有 options.txt 或 mods/ 或 RSTC_version.txt）。</summary>
         public static List<string> FindSources(string gameDir, string excludeInstance)
         {
             var result = new List<string>();
@@ -68,23 +69,66 @@ namespace RstcUpdater
             return result;
         }
 
-        public static string ResolveCategoryPath(string instanceDir, Category category, string path)
+        /// <summary>把类别解析成实际源路径（支持 XaeroWaypoints* 多目录）。</summary>
+        private static List<string> ResolvePaths(string instanceDir, Category category, string path)
         {
-            string direct = Path.Combine(instanceDir, path);
+            var result = new List<string>();
             if (category.NeedsWildcard && path == "XaeroWaypoints")
             {
-                string parent = Directory.Exists(instanceDir) ? instanceDir : null;
-                if (parent != null)
+                if (Directory.Exists(instanceDir))
                 {
-                    string match = Directory.GetDirectories(parent, "XaeroWaypoints*").FirstOrDefault();
-                    if (match != null)
+                    result.AddRange(Directory.GetDirectories(instanceDir, "XaeroWaypoints*"));
+                }
+
+                return result;
+            }
+
+            string full = Path.Combine(instanceDir, path);
+            if (Directory.Exists(full) || File.Exists(full))
+            {
+                result.Add(full);
+            }
+
+            return result;
+        }
+
+        /// <summary>列出「源→目标」文件对。</summary>
+        private static List<(string Src, string Dst)> BuildOperations(string gameDir, string fromInstance, string toInstance, IEnumerable<Category> categories)
+        {
+            string source = Path.Combine(gameDir, "versions", fromInstance);
+            string target = Path.Combine(gameDir, "versions", toInstance);
+            var operations = new List<(string, string)>();
+
+            foreach (var category in categories)
+            {
+                foreach (string path in category.Paths)
+                {
+                    foreach (string src in ResolvePaths(source, category, path))
                     {
-                        return match;
+                        if (Directory.Exists(src))
+                        {
+                            string dstRoot = Path.Combine(target, Path.GetFileName(src));
+                            foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                            {
+                                string rel = file.Substring(src.Length).TrimStart('\\');
+                                operations.Add((file, Path.Combine(dstRoot, rel)));
+                            }
+                        }
+                        else
+                        {
+                            operations.Add((src, Path.Combine(target, path)));
+                        }
                     }
                 }
             }
 
-            return direct;
+            return operations;
+        }
+
+        public static int CountConflicts(string gameDir, string fromInstance, string toInstance, IEnumerable<Category> categories)
+        {
+            var operations = BuildOperations(gameDir, fromInstance, toInstance, categories);
+            return operations.Count(op => File.Exists(op.Dst));
         }
 
         public static long EstimateSize(string instanceDir, IEnumerable<Category> categories)
@@ -94,21 +138,23 @@ namespace RstcUpdater
             {
                 foreach (string path in category.Paths)
                 {
-                    string full = ResolveCategoryPath(instanceDir, category, path);
-                    if (Directory.Exists(full))
+                    foreach (string full in ResolvePaths(instanceDir, category, path))
                     {
-                        try
+                        if (Directory.Exists(full))
                         {
-                            total += Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories)
-                                .Sum(f => new FileInfo(f).Length);
+                            try
+                            {
+                                total += Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories)
+                                    .Sum(f => new FileInfo(f).Length);
+                            }
+                            catch (Exception)
+                            {
+                            }
                         }
-                        catch (Exception)
+                        else if (File.Exists(full))
                         {
+                            total += new FileInfo(full).Length;
                         }
-                    }
-                    else if (File.Exists(full))
-                    {
-                        total += new FileInfo(full).Length;
                     }
                 }
             }
@@ -116,14 +162,15 @@ namespace RstcUpdater
             return total;
         }
 
-        /// <summary>按类别复制（覆盖同名文件），源不变；返回结果摘要。</summary>
-        public static bool Run(string gameDir, string fromInstance, string toInstance, IEnumerable<Category> categories, out string summary)
+        /// <summary>
+        /// 按类别复制。overwrite=false 且目标存在同名文件时拒绝（返回 false）。
+        /// overwrite=true 时先备份目标文件到 rstc-backup/migrate_*，再覆盖。
+        /// </summary>
+        public static bool Run(string gameDir, string fromInstance, string toInstance, IEnumerable<Category> categories, bool overwrite, out string summary)
         {
             string source = Path.Combine(gameDir, "versions", fromInstance);
             string target = Path.Combine(gameDir, "versions", toInstance);
             var lines = new List<string>();
-            int files = 0;
-            long bytes = 0;
 
             if (!Directory.Exists(source))
             {
@@ -137,44 +184,59 @@ namespace RstcUpdater
                 return false;
             }
 
+            List<(string Src, string Dst)> operations = BuildOperations(gameDir, fromInstance, toInstance, categories);
+            var conflicts = operations.Where(op => File.Exists(op.Dst)).ToList();
+            if (conflicts.Count > 0 && !overwrite)
+            {
+                summary = "目标已存在 " + conflicts.Count + " 个同名文件（例如 " +
+                          string.Join(", ", conflicts.Take(3).Select(c => Path.GetFileName(c.Dst))) +
+                          "）。为避免覆盖玩家数据已停止；确认覆盖请显式允许（菜单确认 / --overwrite）。";
+                return false;
+            }
+
+            string backupRoot = null;
+            if (conflicts.Count > 0)
+            {
+                backupRoot = Path.Combine(gameDir, "rstc-backup", "migrate_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff"));
+                foreach (var (src, dst) in conflicts)
+                {
+                    string rel = dst.Substring(target.Length).TrimStart('\\');
+                    string backup = Path.Combine(backupRoot, "files", rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(backup) ?? Path.Combine(backupRoot, "files"));
+                    File.Copy(dst, backup, true);
+                }
+            }
+
+            int files = 0;
+            long bytes = 0;
             foreach (var category in categories)
             {
                 int categoryFiles = 0;
                 foreach (string path in category.Paths)
                 {
-                    string src = ResolveCategoryPath(source, category, path);
-                    if (!Directory.Exists(src) && !File.Exists(src))
+                    foreach (string src in ResolvePaths(source, category, path))
                     {
-                        continue;
-                    }
-
-                    string rel = path;
-                    string dst = Path.Combine(target, path);
-                    if (Directory.Exists(src))
-                    {
-                        // 目录：递归复制
-                        string dstDir = dst;
-                        if (category.NeedsWildcard && path == "XaeroWaypoints")
+                        if (Directory.Exists(src))
                         {
-                            dstDir = Path.Combine(target, Path.GetFileName(src));
+                            string dstRoot = Path.Combine(target, Path.GetFileName(src));
+                            foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                            {
+                                string rel = file.Substring(src.Length).TrimStart('\\');
+                                string dst = Path.Combine(dstRoot, rel);
+                                Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? dstRoot);
+                                File.Copy(file, dst, true);
+                                categoryFiles++;
+                                bytes += new FileInfo(file).Length;
+                            }
                         }
-
-                        foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                        else if (File.Exists(src))
                         {
-                            string relative = file.Substring(src.Length).TrimStart('\\');
-                            string outFile = Path.Combine(dstDir, relative);
-                            Directory.CreateDirectory(Path.GetDirectoryName(outFile) ?? dstDir);
-                            File.Copy(file, outFile, true);
+                            string dst = Path.Combine(target, path);
+                            Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
+                            File.Copy(src, dst, true);
                             categoryFiles++;
-                            bytes += new FileInfo(file).Length;
+                            bytes += new FileInfo(src).Length;
                         }
-                    }
-                    else
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
-                        File.Copy(src, dst, true);
-                        categoryFiles++;
-                        bytes += new FileInfo(src).Length;
                     }
                 }
 
@@ -182,7 +244,19 @@ namespace RstcUpdater
                 lines.Add(category.Name + ": " + categoryFiles + " 个文件");
             }
 
-            summary = string.Join("\n", lines) + "\n总计: " + files + " 个文件 / " + (bytes / 1048576.0).ToString("F1") + " MiB（源未改动）";
+            summary = string.Join("\n", lines) + "\n总计: " + files + " 个文件 / " +
+                      (bytes / 1048576.0).ToString("F1") + " MiB（源未改动";
+            if (conflicts.Count > 0)
+            {
+                summary += "；覆盖 " + conflicts.Count + " 个目标文件，已备份到 " + backupRoot;
+            }
+
+            summary += "）";
+            if (conflicts.Count > 0)
+            {
+                AnsiConsole.MarkupLine("[green]迁移备份[/] " + Markup.Escape(backupRoot));
+            }
+
             return true;
         }
     }
