@@ -48,8 +48,10 @@ namespace RstcUpdater
                             await UpdateActionAsync(gameDir);
                             break;
                         case "从旧实例迁移":
+                            MigrateAction(gameDir);
+                            break;
                         case "检查更新器更新":
-                            AnsiConsole.MarkupLine("[yellow]该功能正在接入（V1 后续提交实现）[/]");
+                            await SelfUpdateActionAsync();
                             break;
                         case "检查关键文件":
                             CheckKeyFiles(gameDir);
@@ -442,6 +444,90 @@ namespace RstcUpdater
             if (code != 0)
             {
                 AnsiConsole.MarkupLine("[red]更新失败（exit " + code + "）[/]");
+            }
+        }
+
+        private static void MigrateAction(string gameDir)
+        {
+            var config = AppConfig.Load();
+            if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
+            {
+                AnsiConsole.MarkupLine("[yellow]未定位游戏目录[/]");
+                return;
+            }
+
+            string target = FindCurrentInstance(gameDir, config);
+            if (string.IsNullOrEmpty(target))
+            {
+                AnsiConsole.MarkupLine("[yellow]未找到目标实例，请先安装[/]");
+                return;
+            }
+
+            var sources = Migration.FindSources(gameDir, target);
+            if (sources.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]同一游戏目录下没有可迁移的旧实例[/]");
+                AnsiConsole.MarkupLine("[grey]提示：跨 .minecraft 目录的迁移暂未实现（V1 后续）。[/]");
+                return;
+            }
+
+            string from = AnsiConsole.Prompt(
+                new SelectionPrompt<string>().Title("选择要迁移的旧实例:").AddChoices(sources));
+            var chosen = AnsiConsole.Prompt(
+                new MultiSelectionPrompt<Migration.Category>()
+                    .Title("选择要迁移的类别（类别内全选）:")
+                    .AddChoices(Migration.Categories));
+            if (chosen.Count == 0)
+            {
+                return;
+            }
+
+            string sourceDir = Path.Combine(gameDir, "versions", from);
+            long estimate = Migration.EstimateSize(sourceDir, chosen);
+            if (!AnsiConsole.Confirm("将从 " + from + " 复制约 " + (estimate / 1048576.0).ToString("F1") +
+                                     " MiB 到 " + target + "（源不动），继续？", true))
+            {
+                return;
+            }
+
+            if (Migration.Run(gameDir, from, target, chosen, out string summary))
+            {
+                AnsiConsole.MarkupLine("[green]迁移完成[/]");
+                AnsiConsole.WriteLine(summary);
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[red]" + Markup.Escape(summary) + "[/]");
+            }
+        }
+
+        private static async Task SelfUpdateActionAsync()
+        {
+            SelfUpdateCheck check = await SelfUpdater.CheckAsync().ConfigureAwait(false);
+            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]更新器自更新[/]");
+            table.AddColumn("项");
+            table.AddColumn("值");
+            table.AddRow("当前版本", check.Current.ToString());
+            table.AddRow("远端版本", Markup.Escape(check.LatestTag ?? "未知"));
+            table.AddRow("更新资产", Markup.Escape(check.AssetName ?? "无"));
+            table.AddRow("结论", Markup.Escape(check.Message ?? ""));
+            AnsiConsole.Write(table);
+
+            if (!check.UpdateAvailable)
+            {
+                return;
+            }
+
+            if (!AnsiConsole.Confirm("下载新版本并在退出后自动替换？", true))
+            {
+                return;
+            }
+
+            int code = await SelfUpdater.ApplyAsync(check).ConfigureAwait(false);
+            if (code == 0)
+            {
+                AnsiConsole.MarkupLine("[green]程序即将退出以完成替换…[/]");
+                Environment.Exit(0);
             }
         }
 

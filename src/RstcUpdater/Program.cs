@@ -74,6 +74,10 @@ namespace RstcUpdater
                         return await InstallV1Async(args);
                     case "--update-v1":
                         return await UpdaterFlow.RunAsync(ParseUpdateOptions(args));
+                    case "--migrate-v1":
+                        return MigrateV1(args);
+                    case "--check-self":
+                        return await CheckSelfAsync();
                     case "--status":
                         return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
                     case "--help":
@@ -685,6 +689,79 @@ namespace RstcUpdater
             public string Instance;
         }
 
+        private static int MigrateV1(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--migrate-v1 需要游戏目录");
+            }
+
+            string gameDir = args[1];
+            string from = null;
+            string to = null;
+            List<string> keys = null;
+            for (int i = 2; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--from":
+                        from = NextArgument(args, ref i, "--from");
+                        break;
+                    case "--to":
+                        to = NextArgument(args, ref i, "--to");
+                        break;
+                    case "--categories":
+                        keys = NextArgument(args, ref i, "--categories")
+                            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                        break;
+                    default:
+                        throw new UsageException("--migrate-v1 不认识的参数: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+            {
+                throw new UsageException("--migrate-v1 需要 --from 与 --to");
+            }
+
+            var categories = keys == null || keys.Count == 0
+                ? Migration.Categories
+                : Migration.Categories.Where(c => keys.Contains(c.Key, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (categories.Count == 0)
+            {
+                throw new UsageException("没有匹配的迁移类别");
+            }
+
+            if (!Migration.Run(gameDir, from, to, categories, out string summary))
+            {
+                Console.Error.WriteLine(summary);
+                return 2;
+            }
+
+            Console.WriteLine(summary);
+            AnsiConsole.MarkupLine("[green]MIGRATE=PASS[/]");
+            return 0;
+        }
+
+        private static async Task<int> CheckSelfAsync()
+        {
+            SelfUpdateCheck check = await SelfUpdater.CheckAsync().ConfigureAwait(false);
+            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]更新器自更新检查[/]");
+            table.AddColumn("项");
+            table.AddColumn("值");
+            table.AddRow("当前版本", check.Current.ToString());
+            table.AddRow("远端版本", check.LatestTag ?? "未知");
+            table.AddRow("更新资产", check.AssetName ?? "无");
+            table.AddRow("结论", Markup.Escape(check.Message ?? ""));
+            AnsiConsole.Write(table);
+            if (check.Message != null && check.Message.Contains("无法获取"))
+            {
+                return 5;
+            }
+
+            return 0;
+        }
+
         private static UpdateOptions ParseUpdateOptions(string[] args)
         {
             if (args.Length < 2)
@@ -965,6 +1042,8 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
             writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程");
             writer.WriteLine("  RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run] [--force]");
+            writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings]");
+            writer.WriteLine("  RstcUpdater.exe --check-self   # 检查更新器自身更新");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
