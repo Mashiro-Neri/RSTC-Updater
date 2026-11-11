@@ -48,6 +48,10 @@ src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --fetch-pack <游戏目录> --
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run] [--keep a,b]
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--dry-run] [--force]   # 整包更新
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings]   # 迁移玩家数据
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --check-self   # 检查更新器自身更新
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 ```
 
