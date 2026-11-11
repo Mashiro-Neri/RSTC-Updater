@@ -160,6 +160,7 @@ namespace RstcUpdater
             string backupDir = Path.Combine(tempBase, "backup");
             Directory.CreateDirectory(backupDir);
             int backedUp = 0;
+            int backupFailures = 0;
             foreach (string file in Directory.EnumerateFiles(installDir, "*", SearchOption.AllDirectories))
             {
                 if (file.StartsWith(tempBase, StringComparison.OrdinalIgnoreCase))
@@ -177,7 +178,18 @@ namespace RstcUpdater
                 }
                 catch (IOException)
                 {
+                    backupFailures++;
                 }
+                catch (UnauthorizedAccessException)
+                {
+                    backupFailures++;
+                }
+            }
+
+            if (backupFailures > 0)
+            {
+                Console.Error.WriteLine("自更新中止：有 " + backupFailures + " 个文件无法备份（可能被占用），为避免无法回滚不执行替换。");
+                return 7;
             }
 
             string bat = Path.Combine(tempBase, "replace.bat");
@@ -187,13 +199,14 @@ namespace RstcUpdater
             script.AppendLine("robocopy \"" + extractDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
             script.AppendLine("if errorlevel 8 goto fail");
             script.AppendLine("start \"\" \"" + exePath + "\"");
-            script.AppendLine("goto done");
-            script.AppendLine(":fail");
-            script.AppendLine("robocopy \"" + backupDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
-            script.AppendLine("start \"\" \"" + exePath + "\"");
-            script.AppendLine(":done");
             script.AppendLine("timeout /t 3 /nobreak >nul");
             script.AppendLine("rd /s /q \"" + tempBase + "\"");
+            script.AppendLine("del \"%~f0\"");
+            script.AppendLine("exit /b 0");
+            script.AppendLine(":fail");
+            script.AppendLine("robocopy \"" + backupDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
+            script.AppendLine("if errorlevel 8 echo RSTC self-update: replace failed and rollback may be incomplete; backup kept at " + backupDir + " > \"%TEMP%\\rstc-selfupdate-error.txt\"");
+            script.AppendLine("start \"\" \"" + exePath + "\"");
             script.AppendLine("del \"%~f0\"");
             File.WriteAllText(bat, script.ToString(), Encoding.Default);
 

@@ -35,6 +35,7 @@ namespace RstcUpdater
                             "更新现有实例",
                             "从旧实例迁移",
                             "检查关键文件",
+                            "回滚未完成更新",
                             "检查更新器更新",
                             "设置",
                             "退出"));
@@ -57,6 +58,9 @@ namespace RstcUpdater
                             break;
                         case "检查关键文件":
                             CheckKeyFiles(gameDir);
+                            break;
+                        case "回滚未完成更新":
+                            RollbackAction(gameDir);
                             break;
                         case "设置":
                             gameDir = Settings(config, gameDir);
@@ -156,7 +160,14 @@ namespace RstcUpdater
             table.AddRow("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(gameDir));
 
             string instance = FindCurrentInstance(gameDir, config);
-            table.AddRow("当前实例", string.IsNullOrEmpty(instance) ? "[yellow]未安装[/]" : Markup.Escape(instance));
+            var allInstances = FindInstances(gameDir);
+            string instanceText = string.IsNullOrEmpty(instance) ? "[yellow]未安装[/]" : Markup.Escape(instance);
+            if (allInstances.Count > 1)
+            {
+                instanceText += "（共 " + allInstances.Count + " 个实例；状态显示当前选中项）";
+            }
+
+            table.AddRow("当前实例", instanceText);
 
             string packVersion = "未安装";
             string mcVersion = "未知";
@@ -236,8 +247,10 @@ namespace RstcUpdater
                 {
                     try
                     {
-                        pclIsolated = Regex.IsMatch(File.ReadAllText(pclIni, Encoding.UTF8),
-                            @"(?im)^\s*VersionArgumentIndieV2\s*:\s*True\s*$");
+                        string iniText = File.ReadAllText(pclIni, Encoding.UTF8);
+                        pclIsolated = Regex.IsMatch(iniText, @"(?im)^\s*VersionArgumentIndieV2\s*:\s*True\s*$") ||
+                                      (!Regex.IsMatch(iniText, @"(?im)^\s*VersionArgumentIndieV2\s*:") &&
+                                       Regex.IsMatch(iniText, @"(?im)^\s*VersionArgumentIndie\s*:\s*1\s*$"));
                     }
                     catch (Exception)
                     {
@@ -571,14 +584,21 @@ namespace RstcUpdater
                 return;
             }
 
-            if (Migration.Run(gameDir, from, target, chosen, conflicts > 0, out string summary))
+            try
             {
-                AnsiConsole.MarkupLine("[green]迁移完成[/]");
-                AnsiConsole.WriteLine(summary);
+                if (Migration.Run(gameDir, from, target, chosen, conflicts > 0, out string summary))
+                {
+                    AnsiConsole.MarkupLine("[green]迁移完成[/]");
+                    AnsiConsole.WriteLine(summary);
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[red]" + Markup.Escape(summary) + "[/]");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                AnsiConsole.MarkupLine("[red]" + Markup.Escape(summary) + "[/]");
+                AnsiConsole.MarkupLine("[red]迁移失败: " + Markup.Escape(ex.GetType().Name + ": " + ex.Message) + "[/]");
             }
         }
 
@@ -610,6 +630,48 @@ namespace RstcUpdater
                 AnsiConsole.MarkupLine("[green]程序即将退出以完成替换…[/]");
                 Environment.Exit(0);
             }
+        }
+
+        private static void RollbackAction(string gameDir)
+        {
+            if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
+            {
+                AnsiConsole.MarkupLine("[yellow]未定位游戏目录[/]");
+                return;
+            }
+
+            string versions = Path.Combine(gameDir, "versions");
+            var candidates = new List<string>();
+            if (Directory.Exists(versions))
+            {
+                foreach (string journalPath in Directory.EnumerateFiles(versions, ".rstc-journal.json", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        var root = JsonNode.Parse(File.ReadAllText(journalPath, Encoding.UTF8)) as JsonObject;
+                        string status = root?["status"]?.GetValue<string>() ?? "";
+                        if (string.Equals(status, "writing", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidates.Add(Path.GetFileName(Path.GetDirectoryName(journalPath)));
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[green]没有未完成的更新[/]");
+                return;
+            }
+
+            candidates.Sort(StringComparer.OrdinalIgnoreCase);
+            string instance = AnsiConsole.Prompt(
+                new SelectionPrompt<string>().Title("选择要回滚的实例:").AddChoices(candidates));
+            PackApplier.Rollback(gameDir, instance);
         }
 
         private static string Settings(AppConfig config, string currentGameDir)

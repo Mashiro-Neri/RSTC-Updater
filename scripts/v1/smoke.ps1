@@ -73,19 +73,24 @@ Check '删除 config/a.txt' (-not (Test-Path -LiteralPath (Join-Path $instanceDi
 Check '新增 config/b.txt' (Test-Path -LiteralPath (Join-Path $instanceDir 'config\b.txt'))
 $c3.Output | Out-File -FilePath (Join-Path $dir '3-update.txt') -Encoding utf8
 
-# ---------- 2b) M2：损坏/越界 zip 不应崩溃 ----------
+# ---------- 2b) M2：损坏/越界 zip 不应崩溃（含合法 index，需 --force 才进入应用） ----------
 $evilZip = Join-Path $game '.rstc-tmp\smoke-evil.zip'
 New-Item -ItemType Directory -Force (Split-Path $evilZip) | Out-Null
 if (Test-Path -LiteralPath $evilZip) { Remove-Item -LiteralPath $evilZip -Force }
 $za = [System.IO.Compression.ZipFile]::Open($evilZip, 'Create')
+$idx = $za.CreateEntry('modrinth.index.json')
+$w = New-Object System.IO.StreamWriter($idx.Open()); $w.Write('{"versionId":"evil","dependencies":{"minecraft":"26.3"}}'); $w.Dispose()
 $e = $za.CreateEntry('overrides/../../evil-outside.txt')
 $w = New-Object System.IO.StreamWriter($e.Open()); $w.Write('evil'); $w.Dispose()
 $za.Dispose()
 $outside = Join-Path $game 'evil-outside.txt'
 if (Test-Path -LiteralPath $outside) { Remove-Item -LiteralPath $outside -Force }
-$c3b = Run-Case @('--update-v1', $game, '--instance', $instance, '--zip', $evilZip)
-Check '越界 zip 被拒绝且不崩溃' ($c3b.Code -eq 7 -or $c3b.Code -eq 5) "exit=$($c3b.Code)"
+$instanceHashBefore = (Get-ChildItem -LiteralPath $instanceDir -Recurse -File | ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" }) -join "`n"
+$c3b = Run-Case @('--update-v1', $game, '--instance', $instance, '--zip', $evilZip, '--force')
+Check '越界 zip 被拒绝且不崩溃' ($c3b.Code -eq 7) "exit=$($c3b.Code)"
 Check '越界 zip 无越界写盘' (-not (Test-Path -LiteralPath $outside))
+$instanceHashAfter = (Get-ChildItem -LiteralPath $instanceDir -Recurse -File | ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash)" }) -join "`n"
+Check '越界 zip 未改动实例' ($instanceHashBefore -eq $instanceHashAfter)
 $c3b.Output | Out-File -FilePath (Join-Path $dir '3b-update-badzip.txt') -Encoding utf8
 
 # ---------- 3) M1：隔离检测按实际值 ----------
@@ -113,6 +118,7 @@ New-Item -ItemType Directory -Force (Join-Path $src 'saves'), (Join-Path $src 's
 'source options' | Set-Content -LiteralPath (Join-Path $src 'options.txt') -Encoding utf8
 $srcHash = Hash (Join-Path $src 'saves\world.dat')
 $targetOptionsBefore = Hash (Join-Path $instanceDir 'options.txt')
+$backupBefore = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory -Filter 'migrate_*' -ErrorAction SilentlyContinue).Count
 
 $c4a = Run-Case @('--migrate-v1', $game, '--from', 'RSTC-SMOKE-SRC', '--to', $instance)
 Check '迁移遇同名文件默认拒绝' ($c4a.Code -eq 2) "exit=$($c4a.Code)"
@@ -126,9 +132,20 @@ Check '迁移内容一致' ((Hash (Join-Path $instanceDir 'saves\world.dat')) -e
 Check '源未改动' ((Hash (Join-Path $src 'saves\world.dat')) -eq $srcHash)
 Check 'XaeroWaypoints_A 已迁移' (Test-Path -LiteralPath (Join-Path $instanceDir 'XaeroWaypoints_A\a.txt'))
 Check 'XaeroWaypoints_B 已迁移' (Test-Path -LiteralPath (Join-Path $instanceDir 'XaeroWaypoints_B\b.txt'))
-$migrateBackup = Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory -Filter 'migrate_*' -ErrorAction SilentlyContinue
-Check '覆盖前有迁移备份' ($null -ne $migrateBackup -and $migrateBackup.Count -ge 1)
+$migrateBackup = @(Get-ChildItem -LiteralPath (Join-Path $game 'rstc-backup') -Directory -Filter 'migrate_*' -ErrorAction SilentlyContinue)
+Check '覆盖前有迁移备份' ($migrateBackup.Count -gt $backupBefore) "before=$backupBefore after=$($migrateBackup.Count)"
 $c4.Output | Out-File -FilePath (Join-Path $dir '4-migrate.txt') -Encoding utf8
+
+# ---------- 4b) R2-M1：目标只读 → 失败回滚、不崩溃 ----------
+'source2 options' | Set-Content -LiteralPath (Join-Path $src 'options.txt') -Encoding utf8
+$targetOptionsBefore2 = Hash (Join-Path $instanceDir 'options.txt')
+Set-ItemProperty -LiteralPath (Join-Path $instanceDir 'options.txt') -Name IsReadOnly -Value $true
+$c4b = Run-Case @('--migrate-v1', $game, '--from', 'RSTC-SMOKE-SRC', '--to', $instance, '--categories', 'settings', '--overwrite')
+Check '只读目标迁移失败 exit 2（不崩溃）' ($c4b.Code -eq 2) "exit=$($c4b.Code)"
+Check '失败后目标已回滚' ((Hash (Join-Path $instanceDir 'options.txt')) -eq $targetOptionsBefore2)
+Check '失败摘要含已回滚' ($c4b.Output -match '已回滚')
+Set-ItemProperty -LiteralPath (Join-Path $instanceDir 'options.txt') -Name IsReadOnly -Value $false
+$c4b.Output | Out-File -FilePath (Join-Path $dir '4b-migrate-readonly.txt') -Encoding utf8
 
 # ---------- 5) 自更新检查 ----------
 $c5 = Run-Case @('--check-self')

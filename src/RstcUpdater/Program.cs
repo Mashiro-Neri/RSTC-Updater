@@ -736,13 +736,22 @@ namespace RstcUpdater
                 throw new UsageException("没有匹配的迁移类别");
             }
 
-            if (!Migration.Run(gameDir, from, to, categories, overwrite, out string summary))
+            try
             {
-                Console.Error.WriteLine(summary);
-                return 2;
+                if (!Migration.Run(gameDir, from, to, categories, overwrite, out string summary))
+                {
+                    Console.Error.WriteLine(summary);
+                    return 2;
+                }
+
+                Console.WriteLine(summary);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("迁移失败: " + ex.GetType().Name + ": " + ex.Message);
+                return 7;
             }
 
-            Console.WriteLine(summary);
             AnsiConsole.MarkupLine("[green]MIGRATE=PASS[/]");
             return 0;
         }
@@ -849,7 +858,15 @@ namespace RstcUpdater
                 }
             }
 
-            return await Installer.InstallFlowAsync(gameDir, instance, localZip).ConfigureAwait(false);
+            try
+            {
+                return await Installer.InstallFlowAsync(gameDir, instance, localZip).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("安装失败: " + ex.GetType().Name + ": " + ex.Message);
+                return 7;
+            }
         }
 
         private static int Pack(PackApplier.PackOptions options)

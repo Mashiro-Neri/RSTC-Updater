@@ -209,39 +209,63 @@ namespace RstcUpdater
 
             int files = 0;
             long bytes = 0;
-            foreach (var category in categories)
+            var createdFiles = new List<string>();
+            try
             {
-                int categoryFiles = 0;
-                foreach (string path in category.Paths)
+                foreach (var category in categories)
                 {
-                    foreach (string src in ResolvePaths(source, category, path))
+                    int categoryFiles = 0;
+                    foreach (string path in category.Paths)
                     {
-                        if (Directory.Exists(src))
+                        foreach (string src in ResolvePaths(source, category, path))
                         {
-                            string dstRoot = Path.Combine(target, Path.GetFileName(src));
-                            foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                            if (Directory.Exists(src))
                             {
-                                string rel = file.Substring(src.Length).TrimStart('\\');
-                                string dst = Path.Combine(dstRoot, rel);
-                                Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? dstRoot);
-                                File.Copy(file, dst, true);
+                                string dstRoot = Path.Combine(target, Path.GetFileName(src));
+                                foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                                {
+                                    string rel = file.Substring(src.Length).TrimStart('\\');
+                                    string dst = Path.Combine(dstRoot, rel);
+                                    Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? dstRoot);
+                                    bool existed = File.Exists(dst);
+                                    File.Copy(file, dst, true);
+                                    if (!existed)
+                                    {
+                                        createdFiles.Add(dst);
+                                    }
+
+                                    categoryFiles++;
+                                    bytes += new FileInfo(file).Length;
+                                }
+                            }
+                            else if (File.Exists(src))
+                            {
+                                string dst = Path.Combine(target, path);
+                                Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
+                                bool existed = File.Exists(dst);
+                                File.Copy(src, dst, true);
+                                if (!existed)
+                                {
+                                    createdFiles.Add(dst);
+                                }
+
                                 categoryFiles++;
-                                bytes += new FileInfo(file).Length;
+                                bytes += new FileInfo(src).Length;
                             }
                         }
-                        else if (File.Exists(src))
-                        {
-                            string dst = Path.Combine(target, path);
-                            Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
-                            File.Copy(src, dst, true);
-                            categoryFiles++;
-                            bytes += new FileInfo(src).Length;
-                        }
                     }
-                }
 
-                files += categoryFiles;
-                lines.Add(category.Name + ": " + categoryFiles + " 个文件");
+                    files += categoryFiles;
+                    lines.Add(category.Name + ": " + categoryFiles + " 个文件");
+                }
+            }
+            catch (Exception ex)
+            {
+                int restored = RestoreFromBackup(backupRoot, target);
+                int removed = RemoveCreated(createdFiles);
+                summary = "迁移失败: " + ex.GetType().Name + ": " + ex.Message +
+                          "；已回滚（恢复 " + restored + " 个被覆盖文件，删除 " + removed + " 个新建文件）";
+                return false;
             }
 
             summary = string.Join("\n", lines) + "\n总计: " + files + " 个文件 / " +
@@ -258,6 +282,61 @@ namespace RstcUpdater
             }
 
             return true;
+        }
+
+        /// <summary>迁移失败时从备份恢复被覆盖文件；返回恢复数量。</summary>
+        private static int RestoreFromBackup(string backupRoot, string target)
+        {
+            if (string.IsNullOrEmpty(backupRoot) || !Directory.Exists(Path.Combine(backupRoot, "files")))
+            {
+                return 0;
+            }
+
+            int restored = 0;
+            string filesRoot = Path.Combine(backupRoot, "files");
+            foreach (string backupFile in Directory.EnumerateFiles(filesRoot, "*", SearchOption.AllDirectories))
+            {
+                string rel = backupFile.Substring(filesRoot.Length).TrimStart('\\');
+                string dst = Path.Combine(target, rel);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? target);
+                    if (File.Exists(dst))
+                    {
+                        File.SetAttributes(dst, FileAttributes.Normal);
+                    }
+
+                    File.Copy(backupFile, dst, true);
+                    restored++;
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return restored;
+        }
+
+        private static int RemoveCreated(List<string> createdFiles)
+        {
+            int removed = 0;
+            foreach (string file in createdFiles)
+            {
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        File.SetAttributes(file, FileAttributes.Normal);
+                        File.Delete(file);
+                        removed++;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return removed;
         }
     }
 }
