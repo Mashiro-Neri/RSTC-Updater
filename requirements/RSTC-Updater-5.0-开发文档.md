@@ -631,11 +631,11 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | **已通过第 3 轮独立审查（PASS）**，待用户验收 | `evidence/stage0/net48-probe/f6a470a…/`（facts、SHA256SUMS、probe.ok/fail、cli-boundary） |
 | 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
-| 0-2 实例 json 三方案 | 未开始 | — |
-| 0-3 隔离配置写入 | 未开始 | — |
+| 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库），待 A1b 启动验收 | `evidence/stage0/provision-0-2/1eaf9ae…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
+| 0-3 隔离配置写入 | **三实例已写入** PCL `Setup.ini`（`VersionArgumentIndieV2:True`）与 HMCL `hmclversion.cfg`（`gameDirType:1`）；待启动生效验证 | 同上 |
 | 0-4 5.5 真实包安装 | 未开始 | — |
 | 0-5 测试包更新链路 | 未开始 | — |
-| 0-6 复用/并行 | 部分（CmlLib 默认并行已确认，实测待 0-1 warm 复跑） | — |
+| 0-6 复用/并行 | 部分：CmlLib 默认并行已确认；warm 复用实测 0 增量（0-1 证据） | — |
 | 0-7 v4 手动迁移 | 未开始 | — |
 
 **阶段 0-1 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证。
