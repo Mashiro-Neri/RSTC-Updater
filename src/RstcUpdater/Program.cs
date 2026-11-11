@@ -65,6 +65,8 @@ namespace RstcUpdater
                         return await InstallAsync(ParseInstallOptions(args));
                     case "--provision":
                         return await ProvisionAsync(ParseProvisionOptions(args));
+                    case "--pack":
+                        return Pack(ParsePackOptions(args));
                     case "--help":
                     case "-h":
                         PrintUsage(Console.Out);
@@ -533,6 +535,108 @@ namespace RstcUpdater
             return options;
         }
 
+        private static int Pack(PackApplier.PackOptions options)
+        {
+            try
+            {
+                EnsureTargetAllowed(Path.GetFullPath(options.GameDir), true);
+            }
+            catch (UsageException ex)
+            {
+                Console.Error.WriteLine("拒绝执行: " + ex.Message);
+                return ExitUsage;
+            }
+
+            return PackApplier.Run(options);
+        }
+
+        private static PackApplier.PackOptions ParsePackOptions(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--pack 需要游戏目录");
+            }
+
+            var options = new PackApplier.PackOptions { GameDir = args[1] };
+            for (int i = 2; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--zip":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--zip 缺少参数");
+                        }
+
+                        options.ZipPath = args[++i];
+                        break;
+                    case "--instance":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--instance 缺少参数");
+                        }
+
+                        options.Instance = args[++i];
+                        break;
+                    case "--update":
+                        options.Update = true;
+                        break;
+                    case "--keep":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--keep 缺少参数");
+                        }
+
+                        options.Keep = args[++i].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                        break;
+                    case "--options":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--options 缺少参数");
+                        }
+
+                        options.OptionsMode = ParseKeepOrPack(args[++i], "--options");
+                        break;
+                    case "--servers":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--servers 缺少参数");
+                        }
+
+                        options.ServersMode = ParseKeepOrPack(args[++i], "--servers");
+                        break;
+                    case "--dry-run":
+                        options.DryRun = true;
+                        break;
+                    default:
+                        throw new UsageException("--pack 不认识的参数: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrEmpty(options.ZipPath))
+            {
+                throw new UsageException("--pack 需要 --zip <整合包>");
+            }
+
+            if (string.IsNullOrEmpty(options.Instance))
+            {
+                throw new UsageException("--pack 需要 --instance <实例名>");
+            }
+
+            return options;
+        }
+
+        private static string ParseKeepOrPack(string value, string option)
+        {
+            if (string.Equals(value, "keep", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value, "pack", StringComparison.OrdinalIgnoreCase))
+            {
+                return value.ToLowerInvariant();
+            }
+
+            throw new UsageException(option + " 只接受 keep 或 pack");
+        }
+
         private static Provisioner.ProvisionOptions ParseProvisionOptions(string[] args)
         {
             if (args.Length < 2)
@@ -612,6 +716,7 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
             writer.WriteLine("  RstcUpdater.exe --install <空的绝对目录> [--reuse]   # 阶段 0 验证：安装原版 26.3，不下载 Java；--reuse 允许续跑/复用已有目录");
             writer.WriteLine("  RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods 目录>]   # 阶段 0-2：Fabric + A2/A1/B 三份实例 + 启动器配置");
+            writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run]");
             writer.WriteLine("  RstcUpdater.exe --help");
             writer.WriteLine("");
             writer.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");
