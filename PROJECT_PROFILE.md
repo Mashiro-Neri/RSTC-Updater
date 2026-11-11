@@ -17,7 +17,11 @@
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
 | test | 待建 | — |
 | smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/f6a470ac50bcd0b468edac92c408e232ffe85262 |
-| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB，见 evidence/stage0/install-26.3/f6a470ac50bcd0b468edac92c408e232ffe85262/20261111_215651 |
+| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB |
+| provision | `RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods>]` | 2026-11-11：A2/A1/B 结构 + 隔离配置保留实测通过 |
+| pack | `RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run]` | 2026-11-11：0-5 44 条断言通过（含中断/回滚/Trim 保护） |
+| fetch-pack | `RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>` | 2026-11-11：真实 5.5 包下载+sha256+422 文件内容校验通过 |
+| rollback | `RstcUpdater.exe --rollback <游戏目录> --instance <名>` | 2026-11-11：fail-closed 实测 |
 | deploy / rollback | N/A（阶段 0 无部署） | — |
 
 ## 3. 运行与部署身份

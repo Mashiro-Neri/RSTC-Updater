@@ -43,6 +43,10 @@
 dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release   # 需要 .NET SDK 8；net48 引用程序集由 NuGet 提供
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --probe    # 拉取 26.3 元数据探针
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install <空目录> [--reuse]   # 安装原版 26.3（不下载 Java）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods>]   # 阶段 0-2：Fabric + A2/A1/B 实例
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>   # 下载+校验+铺开真实包
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run] [--keep a,b]
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --rollback <游戏目录> --instance <名>   # 按 journal 回滚
 ```
 
 - 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`

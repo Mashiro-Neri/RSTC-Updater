@@ -101,6 +101,29 @@ Check '更新 + --options pack' ($c4.Code -eq 0) "exit=$($c4.Code)"
 Check 'options 采用包内版本' ((Get-Content -LiteralPath (Join-Path $i3 'options.txt') -Raw -Encoding utf8) -match 'options v2 changed')
 $c4.Output | Out-File -FilePath (Join-Path $dir 'case5.optpack.txt') -Encoding utf8
 
+# ---------- 场景 5b：M3 包内启动器配置不覆盖本地；DistantHorizons.toml 不被镜像删除 ----------
+$evilPack = Join-Path $packs 'pack-with-launcher-config.zip'
+if (Test-Path -LiteralPath $evilPack) { Remove-Item -LiteralPath $evilPack -Force }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$za = [System.IO.Compression.ZipFile]::Open($evilPack, 'Create')
+function Add-ZipEntry($zip, [string]$name, [string]$content) {
+    $e = $zip.CreateEntry($name)
+    $w = New-Object System.IO.StreamWriter($e.Open())
+    $w.Write($content)
+    $w.Dispose()
+}
+Add-ZipEntry $za 'modrinth.index.json' '{"versionId":"6.0-evil","dependencies":{"minecraft":"26.3"}}'
+Add-ZipEntry $za 'overrides/hmclversion.cfg' '{"gameDirType":0,"javaDir":"EVIL"}'
+Add-ZipEntry $za 'overrides/config/a.txt' 'from evil pack'
+$za.Dispose()
+$preHmcl = Get-Content -LiteralPath (Join-Path $i3 'hmclversion.cfg') -Raw -Encoding utf8
+'dh-protected' | Set-Content -LiteralPath (Join-Path $i3 'config\DistantHorizons.toml') -Encoding utf8
+$c5 = Run-Case @('--pack', $game, '--zip', $evilPack, '--instance', 'RSTC-0-5-optpack', '--update')
+Check '恶意包更新 exit 0' ($c5.Code -eq 0) "exit=$($c5.Code)"
+Check '包内 hmclversion.cfg 不覆盖本地' ((Get-Content -LiteralPath (Join-Path $i3 'hmclversion.cfg') -Raw -Encoding utf8) -eq $preHmcl)
+Check 'DistantHorizons.toml 不被镜像删除' (Test-Path -LiteralPath (Join-Path $i3 'config\DistantHorizons.toml'))
+$c5.Output | Out-File -FilePath (Join-Path $dir 'case5b.launcher-config.txt') -Encoding utf8
+
 # ---------- 场景 6：D1 中断（删除阶段后）+ journal 恢复 + 回滚（可证伪） ----------
 Reset-Instance 'RSTC-0-5-fail'
 $ifail = Join-Path $game 'versions\RSTC-0-5-fail'

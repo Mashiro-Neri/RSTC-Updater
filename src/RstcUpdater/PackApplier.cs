@@ -71,7 +71,19 @@ namespace RstcUpdater
                 return false;
             }
 
-            return name.IndexOfAny(new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) < 0;
+            if (name != name.Trim() || name.EndsWith(".", StringComparison.Ordinal) || name.EndsWith(" ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (name.IndexOfAny(new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) >= 0)
+            {
+                return false;
+            }
+
+            string stem = name.Split('.')[0].ToUpperInvariant();
+            string[] reserved = { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+            return Array.IndexOf(reserved, stem) < 0;
         }
 
         /// <summary>把 zip 条目名规范成安全的相对路径；不合法则抛异常（防 zip-slip）。</summary>
