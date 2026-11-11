@@ -53,6 +53,8 @@ $factsExtra += "pcl_custom_key_preserved=$([bool]($setup -match 'CustomKey:keepm
 $factsExtra += "pcl_isolation_upserted=$([bool]($setup -match 'VersionArgumentIndieV2:True'))"
 $factsExtra += "hmcl_untouched=$([bool]($hmcl.gameDirType -eq 0 -and $hmcl.javaDir -eq './.jre21/bin/java.exe'))"
 Write-Host ("[PRESERVE] exit=$preserveExit customKey=$($setup -match 'CustomKey:keepme') isolation=$($setup -match 'VersionArgumentIndieV2:True') hmclUntouched=$($hmcl.gameDirType -eq 0)")
+$preserveOk = ($preserveExit -eq 0) -and ($setup -match 'CustomKey:keepme') -and ($setup -match 'VersionArgumentIndieV2:True') -and ($hmcl.gameDirType -eq 0) -and ($hmcl.javaDir -eq './.jre21/bin/java.exe')
+if (-not $preserveOk) { Write-Error "H1 preserve 断言失败"; exit 1 }
 
 # ---------- A2/A1 条件 JVM 参数不应丢失 ----------
 $vanilla = Get-Content -LiteralPath (Join-Path $full 'versions\26.3\26.3.json') -Raw -Encoding utf8 | ConvertFrom-Json

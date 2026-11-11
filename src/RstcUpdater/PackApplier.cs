@@ -108,9 +108,9 @@ namespace RstcUpdater
             string[] parts = name.Split('/');
             foreach (string part in parts)
             {
-                if (part.Length == 0 || part == "." || part == "..")
+                if (part.Length == 0 || part == "." || part == ".." || part != part.TrimEnd(' ', '.'))
                 {
-                    throw new InvalidDataException("条目名含空段/相对段: " + entryName);
+                    throw new InvalidDataException("条目名含空段/相对段/尾随空格或点: " + entryName);
                 }
             }
 
@@ -378,8 +378,11 @@ namespace RstcUpdater
                     backedUp++;
                 }
 
-                AnsiConsole.MarkupLine("[green]备份[/] " + Markup.Escape(backupRoot) + "（" + backedUp + " 个文件）");
-                if (backedUp == 0)
+                if (backedUp > 0)
+                {
+                    AnsiConsole.MarkupLine("[green]备份[/] " + Markup.Escape(backupRoot) + "（" + backedUp + " 个文件）");
+                }
+                else
                 {
                     AnsiConsole.MarkupLine("[grey]本次无需备份（无覆盖/删除）[/]");
                 }
