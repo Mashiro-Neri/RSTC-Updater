@@ -676,6 +676,8 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **安装流程实测**：26.3 夹具包成功装出实例（`PACK_APPLY=PASS`）；真实 Release 路径在 6.0 发布前会因「5.5 基于 1.21.10」被正确拦截（exit 5，不建实例）。证据：`evidence/v1/install-flow-20261111_232852/`。
 
+**V1 端到端冒烟（17 条断言，`scripts/v1/smoke.ps1`）**：安装 → 更新 dry-run（不改盘）→ 实际更新（版本 `local-6.0-min → local-6.0-min2`，删除/新增正确）→ 迁移（内容哈希一致、源不动）→ 自更新检查 → 状态/关键文件，全部通过。证据：`evidence/v1/smoke/<commit>/`。
+
 ---
 
 ## 附录 A：发布侧需求（本次不实现，只写契约）
