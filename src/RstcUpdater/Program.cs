@@ -1,111 +1,527 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using CmlLib.Core;
+using CmlLib.Core.FileExtractors;
+using CmlLib.Core.Installers;
+using CmlLib.Core.Java;
+using CmlLib.Core.Natives;
+using CmlLib.Core.Rules;
+using CmlLib.Core.VersionLoader;
+using Microsoft.Win32;
 using Spectre.Console;
 
 namespace RstcUpdater
 {
     internal static class Program
     {
+        private const string DefaultManifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+        private const string TargetVersion = "26.3";
+        private const int ExpectedAssetObjects = 5149;
+        private const long ExpectedClientJarSize = 41483720L;
+
+        private const int ExitOk = 0;
+        private const int ExitUsage = 2;
+        private const int ExitVersionMissing = 3;
+        private const int ExitFieldMismatch = 4;
+        private const int ExitProbeFailed = 5;
+        private const int ExitDependencyBroken = 6;
+        private const int ExitInstallFailed = 7;
+        private const int ExitInstallVerifyFailed = 8;
+        private const int ExitCancelled = 130;
+
         private static async Task<int> Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
 
-            var mode = args.Length > 0 ? args[0] : "--probe";
-            switch (mode)
+            if (args.Length == 0)
             {
-                case "--probe":
-                    var manifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-                    for (var i = 1; i < args.Length - 1; i++)
-                    {
-                        if (args[i] == "--url")
-                        {
-                            manifestUrl = args[i + 1];
-                        }
-                    }
+                PrintUsage();
+                return ExitUsage;
+            }
 
-                    return await ProbeAsync(manifestUrl);
-                default:
-                    Console.Error.WriteLine("unknown mode: " + mode);
-                    return 2;
+            try
+            {
+                switch (args[0])
+                {
+                    case "--probe":
+                        return await ProbeAsync(ParseProbeOptions(args));
+                    case "--install":
+                        return await InstallAsync(ParseInstallOptions(args));
+                    case "--help":
+                    case "-h":
+                        PrintUsage();
+                        return ExitOk;
+                    default:
+                        Console.Error.WriteLine("未知模式: " + args[0]);
+                        PrintUsage();
+                        return ExitUsage;
+                }
+            }
+            catch (UsageException ex)
+            {
+                Console.Error.WriteLine("参数错误: " + ex.Message);
+                PrintUsage();
+                return ExitUsage;
+            }
+            catch (OperationCanceledException)
+            {
+                AnsiConsole.MarkupLine("[yellow]操作已取消[/]");
+                return ExitCancelled;
             }
         }
 
-        private static async Task<int> ProbeAsync(string manifestUrl)
+        // ==================== probe ====================
+
+        private static async Task<int> ProbeAsync(ProbeOptions options)
         {
             AnsiConsole.Write(new Rule("[cyan]RSTC-Updater 5.0 · net48 probe[/]").RuleStyle("grey"));
 
+            var loaded = TryLoadCmlLib(out var cmlLibError);
             var table = new Table().Border(TableBorder.Rounded);
             table.AddColumn("项目");
             table.AddColumn("值");
-            table.AddRow("运行时", Environment.Version.ToString());
-            table.AddRow("系统", Environment.OSVersion.ToString());
+            table.AddRow("CLR", Environment.Version.ToString());
+            table.AddRow("框架", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+            table.AddRow("系统（注册表）", GetRealOs());
+            table.AddRow("系统（CLR 报告值）", Environment.OSVersion.ToString());
             table.AddRow("64 位进程", Environment.Is64BitProcess.ToString());
-
-            try
-            {
-                var mcPath = new CmlLib.Core.MinecraftPath(Path.Combine(Path.GetTempPath(), "rstc-probe"));
-                table.AddRow("CmlLib.Core", "已加载：" + mcPath.BasePath);
-            }
-            catch (Exception ex)
-            {
-                table.AddRow("CmlLib.Core", "加载失败：" + ex.GetType().Name + ": " + ex.Message);
-            }
-
+            table.AddRow("CmlLib.Core", loaded ? "可用" : "加载失败：" + cmlLibError);
             AnsiConsole.Write(table);
 
+            if (!loaded)
+            {
+                Console.Error.WriteLine("关键依赖 CmlLib.Core 不可用，探针失败。");
+                return ExitDependencyBroken;
+            }
+
+            string manifest;
             try
             {
-                using (var http = new HttpClient())
+                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) })
                 {
                     http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0-probe");
-
-                    var manifest = await http.GetStringAsync(manifestUrl);
-                    using (var doc = JsonDocument.Parse(manifest))
-                    {
-                        JsonElement? target = null;
-                        foreach (var version in doc.RootElement.GetProperty("versions").EnumerateArray())
-                        {
-                            if (version.GetProperty("id").GetString() == "26.3")
-                            {
-                                target = version;
-                                break;
-                            }
-                        }
-
-                        if (!target.HasValue)
-                        {
-                            AnsiConsole.MarkupLine("[red]未在版本清单中找到 26.3[/]");
-                            return 3;
-                        }
-
-                        var versionUrl = target.Value.GetProperty("url").GetString();
-                        var versionJson = await http.GetStringAsync(versionUrl);
-                        using (var versionDoc = JsonDocument.Parse(versionJson))
-                        {
-                            var root = versionDoc.RootElement;
-                            var java = root.GetProperty("javaVersion").GetProperty("majorVersion").GetInt32();
-                            var mainClass = root.GetProperty("mainClass").GetString();
-                            var assetIndex = root.GetProperty("assetIndex").GetProperty("id").GetString();
-
-                            AnsiConsole.MarkupLine(
-                                $"[green]26.3[/] java={java} assetIndex={assetIndex} mainClass={mainClass}");
-
-                            return java == 25 && assetIndex == "34" &&
-                                   mainClass == "net.minecraft.client.main.Main"
-                                ? 0
-                                : 4;
-                        }
-                    }
+                    manifest = await http.GetStringAsync(options.ManifestUrl).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
             {
-                AnsiConsole.MarkupLine("[red]探针失败：[/]" + ex.GetType().Name + ": " + ex.Message);
-                return 5;
+                Console.Error.WriteLine("拉取版本清单失败");
+                Console.Error.WriteLine("  URL: " + options.ManifestUrl);
+                Console.Error.WriteLine("  " + ex.GetType().Name + ": " + ex.Message);
+                if (ex.InnerException != null)
+                {
+                    Console.Error.WriteLine("  内层: " + ex.InnerException.GetType().Name + ": " + ex.InnerException.Message);
+                }
+                return ExitProbeFailed;
+            }
+
+            using (var doc = JsonDocument.Parse(manifest))
+            {
+                JsonElement? target = null;
+                foreach (var version in doc.RootElement.GetProperty("versions").EnumerateArray())
+                {
+                    if (version.GetProperty("id").GetString() == TargetVersion)
+                    {
+                        target = version;
+                        break;
+                    }
+                }
+
+                if (!target.HasValue)
+                {
+                    Console.Error.WriteLine("版本清单中找不到 " + TargetVersion);
+                    return ExitVersionMissing;
+                }
+
+                string versionUrl = target.Value.GetProperty("url").GetString();
+                string versionJson;
+                try
+                {
+                    using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) })
+                    {
+                        http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0-probe");
+                        versionJson = await http.GetStringAsync(versionUrl).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("拉取 " + TargetVersion + " 版本 JSON 失败");
+                    Console.Error.WriteLine("  URL: " + versionUrl);
+                    Console.Error.WriteLine("  " + ex.GetType().Name + ": " + ex.Message);
+                    return ExitProbeFailed;
+                }
+
+                using (var versionDoc = JsonDocument.Parse(versionJson))
+                {
+                    var root = versionDoc.RootElement;
+                    int java = root.GetProperty("javaVersion").GetProperty("majorVersion").GetInt32();
+                    string mainClass = root.GetProperty("mainClass").GetString();
+                    string assetIndex = root.GetProperty("assetIndex").GetProperty("id").GetString();
+
+                    bool ok = java == 25 &&
+                              assetIndex == "34" &&
+                              mainClass == "net.minecraft.client.main.Main";
+
+                    if (!ok)
+                    {
+                        Console.Error.WriteLine("字段与预期不符：");
+                        Console.Error.WriteLine("  javaVersion.majorVersion  期望 25   实际 " + java);
+                        Console.Error.WriteLine("  assetIndex.id             期望 34   实际 " + assetIndex);
+                        Console.Error.WriteLine("  mainClass                 期望 net.minecraft.client.main.Main  实际 " + mainClass);
+                        return ExitFieldMismatch;
+                    }
+
+                    AnsiConsole.MarkupLine(
+                        "[green]26.3[/] java=" + java + " assetIndex=" + assetIndex + " mainClass=" + mainClass);
+                    return ExitOk;
+                }
+            }
+        }
+
+        private static bool TryLoadCmlLib(out string error)
+        {
+            try
+            {
+                var probePath = new CmlLib.Core.MinecraftPath(
+                    Path.Combine(Path.GetTempPath(), "rstc-probe-" + Guid.NewGuid().ToString("N")));
+                if (string.IsNullOrEmpty(probePath.BasePath))
+                {
+                    error = "MinecraftPath.BasePath 为空";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.GetType().Name + ": " + ex.Message;
+                return false;
+            }
+        }
+
+        // ==================== install ====================
+
+        private static async Task<int> InstallAsync(InstallOptions options)
+        {
+            string gameDir = Path.GetFullPath(options.GameDir);
+            try
+            {
+                EnsureTargetAllowed(gameDir);
+            }
+            catch (UsageException ex)
+            {
+                Console.Error.WriteLine("拒绝安装: " + ex.Message);
+                return ExitUsage;
+            }
+
+            Directory.CreateDirectory(gameDir);
+            AnsiConsole.Write(new Rule("[cyan]安装 Minecraft " + TargetVersion + "（阶段 0 验证）[/]").RuleStyle("grey"));
+            AnsiConsole.MarkupLine("目标: [yellow]" + gameDir + "[/]");
+            AnsiConsole.MarkupLine("说明: 不下载 Java 运行时（产品语义：只检测），仅安装游戏本体/库/资源。");
+
+            var stopwatch = Stopwatch.StartNew();
+            int files = 0;
+            int totalFiles = 0;
+            long lastBytes = 0;
+            long totalBytes = 0;
+            var lastReport = Stopwatch.StartNew();
+            var sync = new object();
+
+            using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(100) })
+            using (var cts = new CancellationTokenSource())
+            {
+                Console.CancelKeyPress += (s, e) =>
+                {
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
+
+                MinecraftLauncher launcher;
+                try
+                {
+                    launcher = CreateLauncher(gameDir, http);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("初始化 CmlLib 失败: " + ex);
+                    return ExitDependencyBroken;
+                }
+
+                launcher.FileProgressChanged += (s, e) =>
+                {
+                    lock (sync)
+                    {
+                        files = e.ProgressedTasks;
+                        totalFiles = e.TotalTasks;
+                    }
+                };
+
+                launcher.ByteProgressChanged += (s, e) =>
+                {
+                    lock (sync)
+                    {
+                        lastBytes = e.ProgressedBytes;
+                        totalBytes = e.TotalBytes;
+                    }
+
+                    if (lastReport.ElapsedMilliseconds < 1000)
+                    {
+                        return;
+                    }
+
+                    lastReport.Restart();
+                    lock (sync)
+                    {
+                        RenderInstallProgress(files, totalFiles, lastBytes, totalBytes, stopwatch.Elapsed);
+                    }
+                };
+
+                try
+                {
+                    await launcher.InstallAsync(TargetVersion, cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    AnsiConsole.MarkupLine("[yellow]安装已取消，保留现场供排查：[/]" + gameDir);
+                    return ExitCancelled;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("安装失败: " + ex.GetType().Name + ": " + ex.Message);
+                    if (ex.InnerException != null)
+                    {
+                        Console.Error.WriteLine("  内层: " + ex.InnerException.GetType().Name + ": " + ex.InnerException.Message);
+                    }
+                    return ExitInstallFailed;
+                }
+            }
+
+            stopwatch.Stop();
+            AnsiConsole.MarkupLine("");
+            AnsiConsole.MarkupLine("[green]安装完成[/] 耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
+                                   "，下载/写入 " + (lastBytes / 1048576.0).ToString("F1") + " MB");
+
+            return VerifyInstall(gameDir);
+        }
+
+        private static MinecraftLauncher CreateLauncher(string gameDir, HttpClient http)
+        {
+            var path = new MinecraftPath(gameDir);
+            var parameters = MinecraftLauncherParameters.CreateEmpty();
+            parameters.HttpClient = http;
+            parameters.MinecraftPath = path;
+            parameters.RulesEvaluator = new RulesEvaluator();
+            parameters.VersionLoader = new MojangJsonVersionLoaderV2(path, http);
+            parameters.JavaPathResolver = new MinecraftJavaPathResolver(path);
+            parameters.GameInstaller = ParallelGameInstaller.CreateAsCoreCount(http);
+            parameters.NativeLibraryExtractor = new NativeLibraryExtractor(parameters.RulesEvaluator);
+
+            var extractors = DefaultFileExtractors.CreateDefault(
+                http, parameters.RulesEvaluator, parameters.JavaPathResolver);
+            extractors.Java = null; // 产品语义：不下载 Java 运行时
+            parameters.FileExtractors = extractors.ToExtractorCollection();
+
+            return new MinecraftLauncher(parameters);
+        }
+
+        private static void RenderInstallProgress(int files, int totalFiles, long bytes, long totalBytes, TimeSpan elapsed)
+        {
+            double speed = elapsed.TotalSeconds > 0 ? bytes / 1048576.0 / elapsed.TotalSeconds : 0;
+            string line = string.Format(
+                "\r  [{0:hh\\:mm\\:ss}] 文件 {1}/{2}   {3:F1}/{4:F1} MB   {5:F1} MB/s   ",
+                elapsed, files, totalFiles, bytes / 1048576.0, totalBytes / 1048576.0, speed);
+            Console.Out.Write(line);
+            Console.Out.Flush();
+        }
+
+        private static int VerifyInstall(string gameDir)
+        {
+            var checks = new Table().Border(TableBorder.Rounded);
+            checks.AddColumn("检查项");
+            checks.AddColumn("结果");
+            checks.AddColumn("实际值");
+
+            bool allOk = true;
+
+            string versionJson = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".json");
+            bool hasVersionJson = File.Exists(versionJson);
+            checks.AddRow("versions/" + TargetVersion + "/" + TargetVersion + ".json", hasVersionJson ? "[green]OK[/]" : "[red]缺失[/]", hasVersionJson ? "存在" : "-");
+            allOk &= hasVersionJson;
+
+            string jar = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".jar");
+            long jarSize = File.Exists(jar) ? new FileInfo(jar).Length : -1;
+            bool jarOk = jarSize == ExpectedClientJarSize;
+            checks.AddRow("client jar 大小", jarOk ? "[green]OK[/]" : "[red]不符[/]", jarSize.ToString("N0") + " B");
+            allOk &= jarOk;
+
+            string assetIndex = Path.Combine(gameDir, "assets", "indexes", "34.json");
+            int assetObjects = -1;
+            if (File.Exists(assetIndex))
+            {
+                using (var doc = JsonDocument.Parse(File.ReadAllText(assetIndex)))
+                {
+                    assetObjects = doc.RootElement.GetProperty("objects").EnumerateObject().Count();
+                }
+            }
+
+            bool assetOk = assetObjects == ExpectedAssetObjects;
+            checks.AddRow("assets/indexes/34.json", assetOk ? "[green]OK[/]" : "[red]不符[/]", assetObjects + " 个对象");
+            allOk &= assetOk;
+
+            string libDir = Path.Combine(gameDir, "libraries");
+            int libCount = Directory.Exists(libDir)
+                ? Directory.EnumerateFiles(libDir, "*.jar", SearchOption.AllDirectories).Count()
+                : 0;
+            bool libOk = libCount >= 100;
+            checks.AddRow("libraries/*.jar", libOk ? "[green]OK[/]" : "[red]不足[/]", libCount + " 个 jar");
+            allOk &= libOk;
+
+            long totalBytes = Directory.EnumerateFiles(gameDir, "*", SearchOption.AllDirectories)
+                .Sum(f => new FileInfo(f).Length);
+            checks.AddRow("总占用", "信息", (totalBytes / 1048576.0).ToString("F1") + " MB");
+
+            AnsiConsole.Write(checks);
+
+            if (allOk)
+            {
+                AnsiConsole.MarkupLine("[green]INSTALL_VERIFY=PASS[/]");
+                return ExitOk;
+            }
+
+            Console.Error.WriteLine("INSTALL_VERIFY=FAIL");
+            return ExitInstallVerifyFailed;
+        }
+
+        private static void EnsureTargetAllowed(string fullDir)
+        {
+            if (!Path.IsPathRooted(fullDir))
+            {
+                throw new UsageException("安装目录必须是绝对路径");
+            }
+
+            string forbidden = Environment.GetEnvironmentVariable("RSTC_FORBIDDEN_TARGETS");
+            if (!string.IsNullOrWhiteSpace(forbidden))
+            {
+                foreach (string raw in forbidden.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string f = Path.GetFullPath(raw.Trim()).TrimEnd('\\');
+                    string d = fullDir.TrimEnd('\\');
+                    if (string.Equals(d, f, StringComparison.OrdinalIgnoreCase) ||
+                        d.StartsWith(f + "\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new UsageException("目标位于受保护目录内: " + fullDir);
+                    }
+                }
+            }
+
+            if (Directory.Exists(fullDir) && Directory.EnumerateFileSystemEntries(fullDir).Any())
+            {
+                throw new UsageException("目标目录非空（阶段 0 只允许空目录）: " + fullDir);
+            }
+        }
+
+        // ==================== options ====================
+
+        private static ProbeOptions ParseProbeOptions(string[] args)
+        {
+            var options = new ProbeOptions();
+            for (int i = 1; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--url":
+                        if (i + 1 >= args.Length)
+                        {
+                            throw new UsageException("--url 缺少参数值（测试用，只接受 https）");
+                        }
+
+                        string raw = args[++i];
+                        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+                        {
+                            throw new UsageException("--url 只接受 https 绝对地址");
+                        }
+
+                        options.ManifestUrl = uri.ToString();
+                        break;
+                    default:
+                        throw new UsageException("--probe 不认识的参数: " + args[i]);
+                }
+            }
+
+            return options;
+        }
+
+        private static InstallOptions ParseInstallOptions(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new UsageException("--install 需要目标目录");
+            }
+
+            if (args.Length > 2)
+            {
+                throw new UsageException("--install 只接受一个目标目录");
+            }
+
+            return new InstallOptions { GameDir = args[1] };
+        }
+
+        private static void PrintUsage()
+        {
+            Console.Error.WriteLine("用法:");
+            Console.Error.WriteLine("  RstcUpdater.exe --probe [--url <https 清单地址，测试用>]");
+            Console.Error.WriteLine("  RstcUpdater.exe --install <空的绝对目录>   # 阶段 0 验证：安装原版 26.3，不下载 Java");
+            Console.Error.WriteLine("  RstcUpdater.exe --help");
+            Console.Error.WriteLine("");
+            Console.Error.WriteLine("退出码: 0 成功 / 2 参数 / 3 版本缺失 / 4 字段不符 / 5 网络 / 6 依赖 / 7 安装失败 / 8 校验失败 / 130 取消");
+        }
+
+        private static string GetRealOs()
+        {
+            try
+            {
+                using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (key == null)
+                    {
+                        return "unknown";
+                    }
+
+                    object name = key.GetValue("ProductName");
+                    object build = key.GetValue("CurrentBuild");
+                    object ubr = key.GetValue("UBR");
+                    return (name ?? "unknown") + " (build " + (build ?? "?") + "." + (ubr ?? "?") + ")";
+                }
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
+        private sealed class ProbeOptions
+        {
+            public string ManifestUrl = DefaultManifestUrl;
+        }
+
+        private sealed class InstallOptions
+        {
+            public string GameDir;
+        }
+
+        private sealed class UsageException : Exception
+        {
+            public UsageException(string message) : base(message)
+            {
             }
         }
     }
