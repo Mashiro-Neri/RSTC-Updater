@@ -80,6 +80,13 @@ namespace RstcUpdater
                         return await CheckSelfAsync();
                     case "--status":
                         return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
+                    case "--menu-script":
+                        if (args.Length < 2)
+                        {
+                            throw new UsageException("--menu-script 需要脚本文件路径");
+                        }
+
+                        return await Menu.RunAsync(args[1]);
                     case "--help":
                     case "-h":
                         PrintUsage(Console.Out);
@@ -1066,6 +1073,7 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings] [--overwrite]");
             writer.WriteLine("  RstcUpdater.exe --check-self   # 检查更新器自身更新");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
+            writer.WriteLine("  RstcUpdater.exe --menu-script <脚本文件>   # 用脚本输入驱动菜单（测试用）");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");
             writer.WriteLine("  RstcUpdater.exe --help");

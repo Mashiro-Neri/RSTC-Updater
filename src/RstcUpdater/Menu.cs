@@ -15,9 +15,29 @@ namespace RstcUpdater
     {
         private const int RequiredJava = 25;
 
-        public static async Task<int> RunAsync()
+        private static Queue<string> _script;
+
+        private static bool ScriptMode
+        {
+            get { return _script != null; }
+        }
+
+        public static async Task<int> RunAsync(string scriptPath = null)
         {
             await Task.Yield();
+            if (!string.IsNullOrEmpty(scriptPath))
+            {
+                LoadScript(scriptPath);
+            }
+            else
+            {
+                string envScript = Environment.GetEnvironmentVariable("RSTC_MENU_SCRIPT");
+                if (!string.IsNullOrEmpty(envScript))
+                {
+                    LoadScript(envScript);
+                }
+            }
+
             Console.OutputEncoding = Encoding.UTF8;
             var config = AppConfig.Load();
             string gameDir = ResolveGameDir(config);
@@ -26,19 +46,18 @@ namespace RstcUpdater
             while (true)
             {
                 RenderStatus(gameDir, config);
-                var choice = AnsiConsole.Prompt(
-                    new SelectionPrompt<string>()
-                        .Title("[grey]请选择操作[/]")
-                        .PageSize(10)
-                        .AddChoices(
-                            "安装到新目录",
-                            "更新现有实例",
-                            "从旧实例迁移",
-                            "检查关键文件",
-                            "回滚未完成更新",
-                            "检查更新器更新",
-                            "设置",
-                            "退出"));
+                var menuChoices = new[]
+                {
+                    "安装到新目录",
+                    "更新现有实例",
+                    "从旧实例迁移",
+                    "检查关键文件",
+                    "回滚未完成更新",
+                    "检查更新器更新",
+                    "设置",
+                    "退出"
+                };
+                string choice = SelectPrompt("[grey]请选择操作[/]", menuChoices);
 
                 try
                 {
@@ -78,13 +97,16 @@ namespace RstcUpdater
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[grey]按任意键返回菜单…[/]");
-                try
+                if (!ScriptMode)
                 {
-                    Console.ReadKey(true);
-                }
-                catch (InvalidOperationException)
-                {
-                    // 非交互环境（重定向）直接继续
+                    try
+                    {
+                        Console.ReadKey(true);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // 非交互环境（重定向）直接继续
+                    }
                 }
             }
         }
@@ -127,16 +149,10 @@ namespace RstcUpdater
 
             if (candidates.Count > 1)
             {
-                var picked = AnsiConsole.Prompt(
-                    new SelectionPrompt<string>()
-                        .Title("[grey]检测到多个游戏目录，请选择[/]")
-                        .AddChoices(candidates));
-                return picked;
+                return SelectPrompt("[grey]检测到多个游戏目录，请选择[/]", candidates);
             }
 
-            string input = AnsiConsole.Prompt(
-                new TextPrompt<string>("请输入 .minecraft 游戏目录路径（可留空跳过）:")
-                    .AllowEmpty());
+            string input = TextPromptInput("请输入 .minecraft 游戏目录路径（可留空跳过）:", "", true);
             if (string.IsNullOrWhiteSpace(input))
             {
                 return null;
@@ -335,14 +351,103 @@ namespace RstcUpdater
             AnsiConsole.Write(table);
         }
 
+        // ==================== 可脚本化输入（测试钩子） ====================
+
+        private static void LoadScript(string path)
+        {
+            _script = new Queue<string>(
+                File.ReadAllLines(path, Encoding.UTF8)
+                    .Where(l => !string.IsNullOrWhiteSpace(l) && !l.TrimStart().StartsWith("#"))
+                    .Select(l => l.Trim()));
+        }
+
+        private static string NextScript(string what)
+        {
+            if (_script.Count == 0)
+            {
+                throw new FlowFailureException(2, "菜单脚本输入用尽，仍需要: " + what);
+            }
+
+            return _script.Dequeue();
+        }
+
+        private static string SelectPrompt(string title, IReadOnlyList<string> choices)
+        {
+            if (!ScriptMode)
+            {
+                return AnsiConsole.Prompt(new SelectionPrompt<string>().Title(title).AddChoices(choices));
+            }
+
+            string answer = NextScript(title);
+            string match = choices.FirstOrDefault(c => string.Equals(c, answer, StringComparison.OrdinalIgnoreCase))
+                           ?? choices.FirstOrDefault(c => c.IndexOf(answer, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (match == null)
+            {
+                throw new FlowFailureException(2, "菜单脚本选择不在选项内: " + answer + "（" + title + "）");
+            }
+
+            return match;
+        }
+
+        private static List<string> MultiPrompt(string title, IReadOnlyList<string> choices)
+        {
+            if (!ScriptMode)
+            {
+                return AnsiConsole.Prompt(new MultiSelectionPrompt<string>().Title(title).AddChoices(choices));
+            }
+
+            string answer = NextScript(title);
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(answer) || answer == "无")
+            {
+                return result;
+            }
+
+            foreach (string part in answer.Split(','))
+            {
+                string token = part.Trim();
+                string match = choices.FirstOrDefault(c => string.Equals(c, token, StringComparison.OrdinalIgnoreCase))
+                               ?? choices.FirstOrDefault(c => c.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (match != null)
+                {
+                    result.Add(match);
+                }
+            }
+
+            return result;
+        }
+
+        private static bool ConfirmPrompt(string message, bool defaultValue)
+        {
+            if (!ScriptMode)
+            {
+                return AnsiConsole.Confirm(message, defaultValue);
+            }
+
+            string answer = NextScript(message).ToLowerInvariant();
+            return answer.StartsWith("y") || answer == "是" || answer == "1";
+        }
+
+        private static string TextPromptInput(string message, string defaultValue, bool allowEmpty)
+        {
+            if (!ScriptMode)
+            {
+                return AnsiConsole.Prompt(new TextPrompt<string>(message)
+                    .DefaultValue(defaultValue ?? "")
+                    .AllowEmpty());
+            }
+
+            string answer = NextScript(message);
+            return answer == "空" ? string.Empty : answer;
+        }
+
         private static async Task<string> InstallActionAsync(string gameDir)
         {
             var config = AppConfig.Load();
             string dir = gameDir;
             if (string.IsNullOrEmpty(dir))
             {
-                string input = AnsiConsole.Prompt(
-                    new TextPrompt<string>("游戏目录（.minecraft，留空取消）:").AllowEmpty());
+                string input = TextPromptInput("游戏目录（.minecraft，留空取消）:", "", true);
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     return gameDir;
@@ -351,8 +456,7 @@ namespace RstcUpdater
                 dir = Path.GetFullPath(input.Trim().Trim('"'));
             }
 
-            string name = AnsiConsole.Prompt(
-                new TextPrompt<string>("实例名:").DefaultValue("红石镇客户端"));
+            string name = TextPromptInput("实例名:", "红石镇客户端", false);
             name = name.Trim();
             if (!PackApplier.IsSafeInstanceName(name))
             {
@@ -379,12 +483,15 @@ namespace RstcUpdater
                 : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]");
             AnsiConsole.Write(info);
 
-            if (!AnsiConsole.Confirm("开始安装？", true))
+            string localZipInput = TextPromptInput("本地整合包 zip（留空=在线下载最新）:", "", true);
+            string localZip = string.IsNullOrWhiteSpace(localZipInput) ? null : localZipInput.Trim().Trim('"');
+
+            if (!ConfirmPrompt("开始安装？", true))
             {
                 return gameDir;
             }
 
-            int code = await Installer.InstallFlowAsync(dir, name).ConfigureAwait(false);
+            int code = await Installer.InstallFlowAsync(dir, name, localZip).ConfigureAwait(false);
             if (code == 0)
             {
                 config.LastGameDir = dir;
@@ -423,10 +530,7 @@ namespace RstcUpdater
                     string instance = Path.GetFileName(Path.GetDirectoryName(journalPath));
                     AnsiConsole.MarkupLine("[yellow]检测到实例 " + Markup.Escape(instance) +
                                            " 有未完成更新（journal=" + Markup.Escape(status) + "）[/]");
-                    string pick = AnsiConsole.Prompt(
-                        new SelectionPrompt<string>()
-                            .Title("是否回滚到更新前状态？")
-                            .AddChoices("回滚", "暂时忽略"));
+                    string pick = SelectPrompt("是否回滚到更新前状态？", new[] { "回滚", "暂时忽略" });
                     if (pick == "回滚")
                     {
                         PackApplier.Rollback(gameDir, instance);
@@ -474,7 +578,7 @@ namespace RstcUpdater
                 return;
             }
 
-            if (!AnsiConsole.Confirm("下载并更新到 " + (check.RemoteVersion ?? "新版本") + "？", true))
+            if (!ConfirmPrompt("下载并更新到 " + (check.RemoteVersion ?? "新版本") + "？", true))
             {
                 return;
             }
@@ -502,11 +606,7 @@ namespace RstcUpdater
             var keep = new List<string>();
             if (prepared.Plan.Deletes.Count > 0)
             {
-                var chosen = AnsiConsole.Prompt(
-                    new MultiSelectionPrompt<string>()
-                        .Title("[yellow]勾选要「保留」的文件（不选则删除）[/]")
-                        .PageSize(15)
-                        .AddChoices(prepared.Plan.Deletes));
+                var chosen = MultiPrompt("[yellow]勾选要「保留」的文件（不选则删除）[/]", prepared.Plan.Deletes);
                 keep.AddRange(chosen);
             }
 
@@ -514,21 +614,17 @@ namespace RstcUpdater
             string serversMode = "keep";
             if (prepared.Plan.Conflicts.Any(c => string.Equals(c, "options.txt", StringComparison.OrdinalIgnoreCase)))
             {
-                string pick = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                    .Title("options.txt 与包内不同，采用哪个？")
-                    .AddChoices("保留我的", "用包里的"));
+                string pick = SelectPrompt("options.txt 与包内不同，采用哪个？", new[] { "保留我的", "用包里的" });
                 optionsMode = pick == "用包里的" ? "pack" : "keep";
             }
 
             if (prepared.Plan.Conflicts.Any(c => string.Equals(c, "servers.dat", StringComparison.OrdinalIgnoreCase)))
             {
-                string pick = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                    .Title("servers.dat 与包内不同，采用哪个？")
-                    .AddChoices("保留我的", "用包里的"));
+                string pick = SelectPrompt("servers.dat 与包内不同，采用哪个？", new[] { "保留我的", "用包里的" });
                 serversMode = pick == "用包里的" ? "pack" : "keep";
             }
 
-            if (!AnsiConsole.Confirm("确认执行更新？", true))
+            if (!ConfirmPrompt("确认执行更新？", true))
             {
                 UpdaterFlow.CleanupZip(prepared);
                 return;
@@ -565,12 +661,10 @@ namespace RstcUpdater
                 return;
             }
 
-            string from = AnsiConsole.Prompt(
-                new SelectionPrompt<string>().Title("选择要迁移的旧实例:").AddChoices(sources));
-            var chosen = AnsiConsole.Prompt(
-                new MultiSelectionPrompt<Migration.Category>()
-                    .Title("选择要迁移的类别（类别内全选）:")
-                    .AddChoices(Migration.Categories));
+            string from = SelectPrompt("选择要迁移的旧实例:", sources);
+            var categoryNames = Migration.Categories.Select(c => c.Name).ToList();
+            var chosenNames = MultiPrompt("选择要迁移的类别（类别内全选）:", categoryNames);
+            var chosen = Migration.Categories.Where(c => chosenNames.Contains(c.Name)).ToList();
             if (chosen.Count == 0)
             {
                 return;
@@ -585,8 +679,8 @@ namespace RstcUpdater
                                        " 个同名文件；确认后会先备份这些文件到 rstc-backup/migrate_* 再覆盖。[/]");
             }
 
-            if (!AnsiConsole.Confirm("将从 " + from + " 复制约 " + (estimate / 1048576.0).ToString("F1") +
-                                     " MiB 到 " + target + "（源不动），继续？", true))
+            if (!ConfirmPrompt("将从 " + from + " 复制约 " + (estimate / 1048576.0).ToString("F1") +
+                               " MiB 到 " + target + "（源不动），继续？", true))
             {
                 return;
             }
@@ -626,7 +720,7 @@ namespace RstcUpdater
                 return;
             }
 
-            if (!AnsiConsole.Confirm("下载新版本并在退出后自动替换？", true))
+            if (!ConfirmPrompt("下载新版本并在退出后自动替换？", true))
             {
                 return;
             }
@@ -676,17 +770,13 @@ namespace RstcUpdater
             }
 
             candidates.Sort(StringComparer.OrdinalIgnoreCase);
-            string instance = AnsiConsole.Prompt(
-                new SelectionPrompt<string>().Title("选择要回滚的实例:").AddChoices(candidates));
+            string instance = SelectPrompt("选择要回滚的实例:", candidates);
             PackApplier.Rollback(gameDir, instance);
         }
 
         private static string Settings(AppConfig config, string currentGameDir)
         {
-            string input = AnsiConsole.Prompt(
-                new TextPrompt<string>("游戏目录（留空保持不变）:")
-                    .DefaultValue(currentGameDir ?? "")
-                    .AllowEmpty());
+            string input = TextPromptInput("游戏目录（留空保持不变）:", currentGameDir ?? "", true);
             if (string.IsNullOrWhiteSpace(input))
             {
                 return currentGameDir;
@@ -770,10 +860,7 @@ namespace RstcUpdater
                 return instances[0];
             }
 
-            return AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title(title)
-                    .AddChoices(instances));
+            return SelectPrompt(title, instances);
         }
     }
 }
