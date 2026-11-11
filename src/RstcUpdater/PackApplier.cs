@@ -69,6 +69,7 @@ namespace RstcUpdater
             {
                 var packFiles = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
                 ZipArchiveEntry indexEntry = null;
+                int pclSkipped = 0;
 
                 foreach (var entry in zip.Entries)
                 {
@@ -97,6 +98,13 @@ namespace RstcUpdater
                     string rel = name.Substring("overrides/".Length);
                     if (rel.Length == 0)
                     {
+                        continue;
+                    }
+
+                    // 用户要求：发布包不携带 PCL/；即使出现也一律跳过，不写入、不删除玩家本地 PCL/
+                    if (rel.StartsWith("PCL/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pclSkipped++;
                         continue;
                     }
 
@@ -206,6 +214,7 @@ namespace RstcUpdater
                 table.AddColumn("项");
                 table.AddColumn("数量");
                 table.AddRow("包内文件（overrides）", packFiles.Count.ToString());
+                table.AddRow("PCL/ 跳过（用户要求）", pclSkipped.ToString());
                 table.AddRow("写入", writes.Count.ToString() + "（其中覆盖 " + overwrites.Count + "）");
                 table.AddRow("删除", deletes.Count.ToString() + "（更新模式）");
                 table.AddRow("玩家保留", keptByUser.Count.ToString());

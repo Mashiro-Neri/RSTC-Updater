@@ -39,9 +39,11 @@ Write-Host ("zip size = {0:N0} bytes" -f $zipInfo.Length)
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
 $overrideFiles = @($archive.Entries | Where-Object { $_.FullName -like 'overrides/*' -and $_.Name -ne '' })
+$pclEntries = @($overrideFiles | Where-Object { $_.FullName -like 'overrides/PCL/*' })
+$expectedInstalled = $overrideFiles.Count - $pclEntries.Count
 $indexEntry = $archive.Entries | Where-Object { $_.FullName -eq 'modrinth.index.json' } | Select-Object -First 1
 $topLevels = @($overrideFiles | ForEach-Object { ($_.FullName.Substring('overrides/'.Length) -split '/')[0] } | Sort-Object -Unique)
-Write-Host "overrides entries = $($overrideFiles.Count); top-level = $($topLevels -join ', ')"
+Write-Host "overrides entries = $($overrideFiles.Count); PCL/ entries = $($pclEntries.Count); top-level = $($topLevels -join ', ')"
 $archive.Dispose()
 
 $instanceName = 'RSTC-5.5'
@@ -57,8 +59,8 @@ $c1.Output | Out-File -FilePath (Join-Path $dir 'install.txt') -Encoding utf8
 # 结构断言
 $installed = @(Get-ChildItem -LiteralPath $instanceDir -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notin @('modrinth.index.json', 'RSTC_version.txt', '.rstc-journal.json') })
-Check '实例文件数 = overrides 数' ($installed.Count -eq $overrideFiles.Count) "installed=$($installed.Count) expect=$($overrideFiles.Count)"
-Check 'PCL/ 未被安装' (-not (Test-Path -LiteralPath (Join-Path $instanceDir 'PCL')))
+Check '实例文件数 = overrides - PCL/' ($installed.Count -eq $expectedInstalled) "installed=$($installed.Count) expect=$expectedInstalled"
+Check 'PCL/ 未被安装（用户要求跳过）' (-not (Test-Path -LiteralPath (Join-Path $instanceDir 'PCL')))
 Check 'index 版本 5.5' ((Get-Content -LiteralPath (Join-Path $instanceDir 'modrinth.index.json') -Raw -Encoding utf8 | ConvertFrom-Json).versionId -eq '5.5')
 Check 'RSTC_version.txt = 5.5' ((Get-Content -LiteralPath (Join-Path $instanceDir 'RSTC_version.txt') -Raw -Encoding utf8).Trim() -eq '5.5')
 Check 'options.txt 存在' (Test-Path -LiteralPath (Join-Path $instanceDir 'options.txt'))
@@ -91,6 +93,8 @@ $facts += "game_dir=$game"
 $facts += "zip=$zip"
 $facts += "zip_bytes=$($zipInfo.Length)"
 $facts += "override_entries=$($overrideFiles.Count)"
+$facts += "pcl_entries_skipped=$($pclEntries.Count)"
+$facts += "expected_installed=$expectedInstalled"
 $facts += "top_levels=$($topLevels -join ',')"
 $facts += "installed_files=$($installed.Count)"
 $facts += "mods=$($mods.Count)"
