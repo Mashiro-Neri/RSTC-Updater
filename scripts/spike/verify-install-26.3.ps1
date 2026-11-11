@@ -46,3 +46,4 @@ $total = (Get-ChildItem -LiteralPath $GameDir -Recurse -File | Measure-Object -P
 Ok ("total size: {0:N1} MB" -f ($total / 1MB))
 
 Write-Host 'VERIFY=PASS' -ForegroundColor Green
+exit 0

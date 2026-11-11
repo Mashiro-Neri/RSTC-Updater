@@ -423,7 +423,7 @@
 
 **峰值**（zip + 解压 + 备份 + 原版同时存在）约 **2.3 GiB**；稳态约 1.15 GiB。预检阈值取 **3 GiB**，确认页分项显示，并按目标卷（不是系统盘）的剩余空间判定。
 
-**实测**：全新安装 26.3 原版耗时 2 分 18 秒、下载/写入 588 MB，3 个验签项全部通过（版本 json、client jar、asset index 5149 对象、74 个库）。
+**实测**：全新安装 26.3 原版耗时 2 分 45 秒、新增 588.9 MiB，4 项检查全部通过（版本 json、client jar、asset index 5149 对象、74 个库）；同目录 warm 复跑 5.1 秒、新增 0.0 MiB，证明跳过逻辑有效。
 
 ### 4.6 隐私
 
@@ -628,7 +628,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 项 | 状态 | 证据 |
 |---|---|---|
 | 0-1 工具链 + 元数据探针 | 已通过独立复跑（第 1 轮审查 FAIL 的 R-02/R-03/R-06/R-07/R-08 已修） | `evidence/stage0/net48-probe/085bb8f…/`（commit、SHA256SUMS、facts） |
-| 0-1 真实安装 26.3 | 执行中（L2，用户已确认范围：仅临时目录） | `evidence/stage0/install-26.3/085bb8f…/`；`evidence/stage0/test-minecraft-<ts>/` |
+| 0-1 真实安装 26.3 | **已通过**（L2，用户已确认范围：仅临时目录）：cold 2 分 45 秒 / 588.9 MiB，warm 5.1 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/c329b80…/20261111_211013/`；临时目录 `evidence/stage0/test-minecraft-20261111_211012/` |
 | 0-2 实例 json 三方案 | 未开始 | — |
 | 0-3 隔离配置写入 | 未开始 | — |
 | 0-4 5.5 真实包安装 | 未开始 | — |

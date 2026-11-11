@@ -17,7 +17,7 @@
 | verify | 见 `delivery.config.json` 的 `verify` | 2026-11-11 exit 0 |
 | test | 待建 | — |
 | smoke | `RstcUpdater.exe --probe` | 2026-11-11 exit 0，见 evidence/stage0/net48-probe/085bb8f7cd2b3166fe5c3cc424fd23ce7925929b |
-| install-test | `RstcUpdater.exe --install <空目录>` | 2026-11-11 L2 执行中（仅临时目录） |
+| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:45/588.9 MiB，warm 5.1 s/0 MiB，见 evidence/stage0/install-26.3/c329b80…/20261111_211013 |
 | deploy / rollback | N/A（阶段 0 无部署） | — |
 
 ## 3. 运行与部署身份

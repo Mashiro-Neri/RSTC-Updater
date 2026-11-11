@@ -29,7 +29,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $installExit = $LASTEXITCODE
 $sw.Stop()
 
-& (Join-Path $RepoRoot 'scripts\spike\verify-install-26.3.ps1') -GameDir $full 2>&1 |
+& (Join-Path $RepoRoot 'scripts\spike\verify-install-26.3.ps1') -GameDir $full 6>&1 |
     Tee-Object -FilePath (Join-Path $dir 'verify.cold.txt') -Encoding utf8
 $verifyExit = $LASTEXITCODE
 
@@ -39,7 +39,7 @@ $sw2 = [System.Diagnostics.Stopwatch]::StartNew()
 $warmExit = $LASTEXITCODE
 $sw2.Stop()
 
-& (Join-Path $RepoRoot 'scripts\spike\verify-install-26.3.ps1') -GameDir $full 2>&1 |
+& (Join-Path $RepoRoot 'scripts\spike\verify-install-26.3.ps1') -GameDir $full 6>&1 |
     Tee-Object -FilePath (Join-Path $dir 'verify.warm.txt') -Encoding utf8
 $verifyWarmExit = $LASTEXITCODE
 
