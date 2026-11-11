@@ -183,8 +183,9 @@ namespace RstcUpdater
 
                 if (options.Update && Directory.Exists(instanceDir))
                 {
-                    var packedSet = new HashSet<string>(writes, StringComparer.OrdinalIgnoreCase);
-                    var topLevels = new HashSet<string>(writes.Select(TopSegment), StringComparer.OrdinalIgnoreCase);
+                    // 删除扫描的基线必须是“包内的顶层路径”，不能用 writes（复用优化后 writes 可能为空）
+                    var packedSet = new HashSet<string>(packFiles.Keys, StringComparer.OrdinalIgnoreCase);
+                    var topLevels = new HashSet<string>(packFiles.Keys.Select(TopSegment), StringComparer.OrdinalIgnoreCase);
                     foreach (string top in topLevels)
                     {
                         if (IsOptionsFile(top) || NeverDelete.Contains(top))
