@@ -74,8 +74,8 @@
 | tag | `v20260922-001655`（本地时间戳） |
 | published_at | `2026-09-21T16:13:38Z`（用于新旧判定） |
 | ZIP 结构 | 427 个条目，中央目录 41,608 B，位于 609,796,094；服务器返回 `Accept-Ranges: bytes` |
-| 顶层 | `modrinth.index.json` + `overrides/`（426 个文件，含 `config/`、`mods/`、`options.txt`、`servers.dat`） |
-| `PCL/` | **用户要求：发布包里不要有 `PCL/`**。5.5 实包按原文档核验为不存在；但 PCL 导出配置 `IncludeLauncherCustom:True` 会打包个性化内容，6.0 前必须复核导出结果 |
+| 顶层 | `modrinth.index.json` + `overrides/`（426 个条目）；overrides 顶层实测 = `config/`、`mods/`、`options.txt`、`PCL/`、`resourcepacks/`、`servers.dat`、`shaderpacks/` |
+| `PCL/` | **5.5 实测：overrides/ 顶层确实有 `PCL/`（4 个条目）**，与原文档"不存在"的说法相反，也印证了用户要去掉它的要求。更新器已实现：一律跳过 `PCL/`（不写、不删玩家本地） |
 
 `modrinth.index.json` 全文：
 
@@ -97,7 +97,7 @@
 由此确定三件事：
 
 1. 包是标准 `.mrpack` 形态；`files` 为空表示全自包含，所有内容都在 `overrides/` 里。
-2. **`PCL/` 要从发布包里去掉（用户明确要求）**：PCL 的导出配置 `E:\其他文件\整合包上传\客户端导出配置.txt` 里 `IncludeLauncherCustom:True` 会打包 PCL 个性化内容，6.0 发布前必须关掉它或在导出规则里排除 `PCL/`（附录 A）。因此更新器**不能依赖包内 `PCL/`**：启动器隔离配置由更新器在安装/更新后自己写（§4.2.1）。注意原文档"5.5 实包不含 `PCL/`"的核验结果与用户反馈的发布行为有出入，阶段 0 需要复核 5.5 的 `overrides/` 顶层清单。
+2. **`PCL/` 要从发布包里去掉（用户明确要求）**：PCL 的导出配置 `E:\其他文件\整合包上传\客户端导出配置.txt` 里 `IncludeLauncherCustom:True` 会打包 PCL 个性化内容，6.0 发布前必须关掉它或在导出规则里排除 `PCL/`（附录 A）。因此更新器**不能依赖包内 `PCL/`**：启动器隔离配置由更新器在安装/更新后自己写（§4.2.1）。**阶段 0 已复核 5.5 的 overrides 顶层：`PCL/` 确实存在（4 个条目），原文档"不存在"的说法有误**；更新器已按用户要求跳过 `PCL/`（§4.3）。
 3. 整合包版本、MC 版本、Fabric 版本都能从 index 直接读到，**不需要额外的包内元数据文件**；但下载前拿不到，需要 `pack-meta.json`（§5）。
 
 发布链路：`E:\其他文件\整合包上传\upload_modpack.ps1`（183 行）——取目录内第一个 `*.zip`、从文件名提版本、用记事本编辑 `changelog.txt`、复制成 `RSTC-<ver>.zip`、tag 取本地时间 `v<yyyyMMdd-HHmmss>`、经 GitHub REST 建 Release 并带进度条上传。**这条链路是 6.0 改造的落点**（本次不实现，见附录 A）。
@@ -379,7 +379,7 @@
 
 ### 4.3 同步语义（白名单镜像）
 
-**只对包 `overrides/` 里出现过的顶层路径做镜像。** 5.5 实包的顶层路径为 `config/`、`mods/`、`options.txt`、`servers.dat`；6.0 的顶层路径以实际包为准。**`PCL/` 一律不参与镜像**——即使包里出现也跳过、不写入、不删除（用户要求发布包不含 `PCL/`；玩家本地的 `PCL/` 属于启动器配置）。
+**只对包 `overrides/` 里出现过的顶层路径做镜像。** 5.5 实包实测顶层路径为 `config/`、`mods/`、`options.txt`、`PCL/`、`resourcepacks/`、`servers.dat`、`shaderpacks/`；6.0 的顶层路径以实际包为准。**`PCL/` 一律不参与镜像**——即使包里出现也跳过、不写入、不删除（用户要求发布包不含 `PCL/`；玩家本地的 `PCL/` 属于启动器配置）。
 
 规则：
 
@@ -633,12 +633,12 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 0-1 真实安装 26.3 | **已通过第 3 轮独立审查（PASS）**，待用户验收（L2，用户已确认范围：仅临时目录）：cold 2 分 20 秒 / 588.9 MiB，warm 3.6 秒 / 新增 0.0 MiB，两次校验均 PASS | `evidence/stage0/install-26.3/f6a470a…/20261111_215651/`；临时目录 `evidence/stage0/test-minecraft-20261111_215650/` |
 | 0-2 实例 json 三方案 | **结构已生成并自检通过**（A2/A1/B = 122/122/8 库），待 A1b 启动验收 | `evidence/stage0/provision-0-2/1eaf9ae…/`；实例在 `evidence/stage0/test-minecraft-20261111_215650/versions/` |
 | 0-3 隔离配置写入 | **三实例已写入** PCL `Setup.ini`（`VersionArgumentIndieV2:True`）与 HMCL `hmclversion.cfg`（`gameDirType:1`）；待启动生效验证 | 同上 |
-| 0-4 5.5 真实包安装 | 未开始（zip 下载中） | — |
+| 0-4 5.5 真实包安装 | **已通过**：zip 609,837,724 B（sha256 与 Release digest 一致）；426 个 overrides 条目、跳过 4 个 `PCL/`、安装 422 文件 / 127 个 mod / 598.7 MiB；安装 3.6 s；幂等更新 422 全复用；玩家数据保留、自加 mod 默认删除 | `evidence/stage0/pack-0-4/7a88382…/` |
 | 0-5 测试包更新链路 | **已通过**（20 条断言）：pack-min→v2 的删除/新增/保留清单/options 冲突/journal/备份保留 3 份 | `evidence/stage0/pack-0-5/96218d8…/` |
-| 0-6 复用/并行 | 部分：CmlLib 默认并行已确认；warm 复用实测 0 增量（0-1 证据） | — |
-| 0-7 v4 手动迁移 | 未开始 | — |
+| 0-6 复用/并行 | **复用已实测**：CmlLib warm 0 增量；pack 幂等更新 422 文件全部复用不重写；并行下载由 CmlLib `ParallelGameInstaller` 默认提供（并发=核数） | 0-1/0-4 证据 |
+| 0-7 v4 手动迁移 | **指南已产出**：`requirements/v4到v5迁移指南.md`（含 v4 自更新坑与占位资产方案、回滚）；待 v5 Release 后用户实测 | — |
 
-**阶段 0-1 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证。
+**阶段 0 修正的设计假设**：① CmlLib 默认安装器会下 Java，必须移除 `JavaFileExtractor`；② `SevenZip.dll` 是托管 DLL，不是原生；③ BMCLAPI 实测比官方慢，只作备用；④ 产物是 exe + config + 16 DLL，"单文件"未验证；⑤ 5.5 实包 overrides 顶层含 `PCL/` 与 `resourcepacks/`、`shaderpacks/`（原文档只列 4 项，已更正；`PCL/` 由更新器跳过）。
 
 ---
 
