@@ -668,7 +668,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 | 配置 / 游戏目录探测 / Java 检测 | 已实现 | `%APPDATA%\RSTC-Updater\config.json`；只检测 Java、不下载 |
 | Release 客户端（缓存 + 403 回退 + token） | 已实现 | `RSTC_GITHUB_TOKEN` 可选；无网时标注"来自缓存" |
 | **安装到新目录** | 已实现（CLI `--install-v1` + 菜单） | 原版 26.3（可续跑/重试）→ **先校验包 MC 依赖** → Fabric → A2 实例 → 应用 → 完成信息 |
-| 整包更新 | 待实现 | 需要 Plan 预览 API + 交互勾选保留 |
+| 整包更新 | 已实现（CLI `--update-v1` + 菜单） | 版本比较 → 下载/sha256 → **计划预览（删除清单/冲突）** → 勾选保留 → options/servers 冲突选择 → 应用（备份/journal）；Release 成功路径待 6.0 |
 | 从旧实例迁移 | 待实现 | 类别多选 + 复制 |
 | 关键文件检查 | 已实现 | 10 项 + mods 计数 |
 | 检查更新器更新 | 待实现 | v5 Release 资产形态待发布器 |

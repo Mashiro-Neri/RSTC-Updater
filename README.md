@@ -47,7 +47,7 @@ src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --provision <游戏目录> [--
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>   # 下载+校验+铺开真实包
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run] [--keep a,b]
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
+src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--dry-run] [--force]   # 整包更新
 src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
 ```
 
