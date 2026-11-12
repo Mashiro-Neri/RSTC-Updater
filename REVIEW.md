@@ -156,3 +156,9 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 安装后：清理未使用的 `versions\fabric-loader-0.20.1-26.3`（有实例 inheritsFrom 则保留），启动器版本列表只留客户端实例 + 原版 26.3。
 - 回归（HEAD 前序）：smoke 32/32、menu 12/12、language 12/12、provision PASS；待终审（第 16 轮 A/B）结论后冻结发布。
 - 发布前仍需：`RSTC-Updater-5.0.0.zip` 打包 + 自更新 E1/E2、0-7 真实迁移、6.0 正式版发布、仓库推送。
+## 22. 终审 R16A/R16B 修复与自更新 E1/E2（2026-11-13）
+
+- R16A：修 Ctrl+C handler 生命周期（反注册 + ObjectDisposed 容错）；原版失败/取消时真正 abort 后台整合包并清状态；校验卡片前 Clear；镜像去掉 403 的 maven/assets 映射、补 manifest 映射、支持 RSTC_NO_MIRROR；CLI 增加 --beta。
+- R16B：取消不再重试（exit 130 直接中止并 abort 整合包）；获取 Release 前立即提示、该阶段 Ctrl+C 可在返回后取消；已完整整合包 sha256 一致时复用；本地 zip 不再显示第 4 步/下载源；README/发布说明改为实测口径。
+- **自更新 E1/E2 真机发现并修复真实 Bug**：SelfUpdater.ApplyAsync 误用 `tempBase/zip` 路径（下载实际在 `.rstc-tmp/`），E1 曾 FileNotFound；改为使用 DownloadAssetAsync 返回值后，本地 mock Release 测通：E1 5.0.0→5.0.1 替换成功；E2 强制替换失败→回滚、版本保持 5.0.0、错误记录生成。
+- 测试用 API 覆盖：`RSTC_GITHUB_API_BASE`、`RSTC_PREFERRED_MIRROR`、`--self-update-apply`、`RSTC_SELFUPDATE_FORCE_FAIL`（仅测试）。
