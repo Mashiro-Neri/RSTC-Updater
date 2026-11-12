@@ -859,7 +859,20 @@ namespace RstcUpdater
 
             if (source == "使用本地 zip 文件")
             {
-                string zip = TextPromptInput("本地 zip 完整路径（可拖入文件，b 返回）:", "", true);
+                string zipMode = SelectPrompt("选择 zip 文件:", new[]
+                {
+                    "浏览选择 zip 文件（Windows 选择器）",
+                    "手动输入 zip 路径",
+                    "返回菜单"
+                });
+                if (zipMode == null || zipMode == "返回菜单")
+                {
+                    return gameDir;
+                }
+
+                string zip = zipMode.StartsWith("浏览")
+                    ? NativePicker.PickZipFile("")
+                    : TextPromptInput("本地 zip 完整路径（可拖入文件，b 返回）:", "", true);
                 if (zip == null)
                 {
                     return gameDir;
@@ -981,6 +994,7 @@ namespace RstcUpdater
                     options.Add("使用当前目录：" + current);
                 }
 
+                options.Add("浏览文件夹（Windows 选择器）");
                 options.Add("手动输入 .minecraft 目录");
                 options.Add("返回菜单");
 
@@ -994,6 +1008,14 @@ namespace RstcUpdater
                 if (choice.StartsWith("使用当前目录"))
                 {
                     path = current;
+                }
+                else if (choice.StartsWith("浏览文件夹"))
+                {
+                    path = NativePicker.PickFolder(current);
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        continue;
+                    }
                 }
                 else
                 {
