@@ -41,16 +41,13 @@ namespace RstcUpdater
                 AnsiConsole.Clear();
             }
 
-            Ui.Banner();
+            Ui.LogoBox();
 
             while (true)
             {
                 RenderStatus(gameDir, config);
                 Ui.Section("操作");
-                if (!ScriptMode)
-                {
-                    Ui.Footer();
-                }
+                AnsiConsole.MarkupLine("[" + Ui.Dim + "]  ▲ ▼ 移动    Enter 确认[/]");
                 var menuChoices = new[]
                 {
                     "安装到新目录",
@@ -62,29 +59,7 @@ namespace RstcUpdater
                     "设置",
                     "退出"
                 };
-                string choice;
-                if (ScriptMode)
-                {
-                    choice = SelectPrompt("[grey]请选择操作[/]", menuChoices);
-                }
-                else
-                {
-                    var descriptions = new[]
-                    {
-                        "新装 26.3 + 整合包",
-                        "下载最新包并应用",
-                        "复制旧实例玩家数据",
-                        "检查实例完整性",
-                        "回滚中断的更新",
-                        "检查更新器自身更新",
-                        "修改游戏目录 / 实例",
-                        "退出程序"
-                    };
-                    int index = Ui.NumberMenu(menuChoices, descriptions);
-                    Ui.Footer();
-                    choice = menuChoices[index];
-                }
-
+                string choice = SelectPrompt("[red]请选择：[/]", menuChoices);
                 try
                 {
                     switch (choice)
@@ -160,7 +135,7 @@ namespace RstcUpdater
                 }
             }
 
-            Ui.Banner();
+            Ui.LogoBox();
             RenderStatus(resolved, config);
             CheckKeyFiles(resolved);
             return 0;        }
@@ -318,10 +293,8 @@ namespace RstcUpdater
             {
                 ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Math.Max(30, Ui.SafeWidth() - 20)))),
                 ("当前实例", instanceText),
-                ("整合包版本", packVersion == "未安装" ? "[yellow]未安装[/]" : "[white]" + Markup.Escape(packVersion) + "[/]"),
-                ("本地 MC", "[white]" + Markup.Escape(mcVersion) + "[/]"),
-                ("通道", ReleaseClient.BetaChannel ? "[yellow]beta（含 Pre-release）[/]" : "stable（仅正式版）"),
-                ("最新版本", latest),
+                ("整合包", packVersion == "未安装" ? "[yellow]未安装[/]" : "[white]" + Markup.Escape(packVersion) + "[/][grey] / MC " + Markup.Escape(mcVersion) + "[/]"),
+                ("远端", (ReleaseClient.BetaChannel ? "[yellow]beta[/]" : "stable") + "[grey] · 最新 [/]" + latest),
                 ("Java", javaText),
                 ("启动器隔离", isolation)
             });
@@ -411,9 +384,12 @@ namespace RstcUpdater
         {
             if (!ScriptMode)
             {
-                return AnsiConsole.Prompt(new SelectionPrompt<string>().Title(title).AddChoices(choices));
+                return AnsiConsole.Prompt(new SelectionPrompt<string>()
+                    .Title(title)
+                    .PageSize(9)
+                    .HighlightStyle(new Style(foreground: Color.White, background: Color.Maroon))
+                    .AddChoices(choices));
             }
-
             string answer = NextScript(title);
             string match = choices.FirstOrDefault(c => string.Equals(c, answer, StringComparison.OrdinalIgnoreCase));
             if (match == null)
