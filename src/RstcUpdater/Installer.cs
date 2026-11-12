@@ -120,6 +120,11 @@ namespace RstcUpdater
                     return 5;
                 }
 
+                if (MultiProgress.Active)
+                {
+                    MultiProgress.SetPackFinished(PackFetcher.LastSummary ?? "整合包下载完成");
+                }
+
                 MultiProgress.End();
                 downloaded = true;
                 assetName = packAsset.Name;

@@ -60,6 +60,7 @@ namespace RstcUpdater
         public static long LastBytes;
         public static long LastTotal;
         public static double LastSpeed;
+        public static string LastSummary;
 
         internal sealed class FetchOptions
         {
@@ -226,6 +227,7 @@ namespace RstcUpdater
             long freeAfter = GetFreeSpace(gameDir);
             string summary = "整合包下载完成  用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") + "  " +
                              speed.ToString("F1") + " MiB/s  剩余空间 " + (freeAfter / 1073741824.0).ToString("F1") + " GiB";
+            LastSummary = summary;
             if (MultiProgress.Active)
             {
                 MultiProgress.SetPackFinished(summary);
