@@ -10,6 +10,9 @@ namespace RstcUpdater
         /// <summary>形如 http://127.0.0.1:7890；空表示直连。</summary>
         public static string ProxyUrl;
 
+        /// <summary>MC 原版是否优先走 BMCLAPI 镜像（失败自动回退官方）。</summary>
+        public static bool UseMirror = true;
+
         public static HttpClient CreateHttpClient(TimeSpan timeout)
         {
             var handler = new HttpClientHandler();
@@ -25,7 +28,13 @@ namespace RstcUpdater
                 }
             }
 
-            return new HttpClient(handler) { Timeout = timeout };
+            HttpMessageHandler top = handler;
+            if (UseMirror)
+            {
+                top = new MirrorHttpHandler(handler);
+            }
+
+            return new HttpClient(top) { Timeout = timeout };
         }
     }
 }

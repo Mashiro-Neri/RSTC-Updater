@@ -12,8 +12,8 @@ namespace RstcUpdater
             int percent = total > 0 ? (int)Math.Min(100, done * 100L / total) : 0;
             const int barWidth = 28;
             int filled = Math.Max(0, Math.Min(barWidth, percent * barWidth / 100));
-            string filledBar = new string('#', filled);
-            string emptyBar = new string('-', barWidth - filled);
+            string filledBar = new string('█', filled);
+            string emptyBar = new string('░', barWidth - filled);
             string eta = "--:--";
             if (mibPerSecond > 0.05 && total > done)
             {

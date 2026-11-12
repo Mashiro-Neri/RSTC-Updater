@@ -281,7 +281,7 @@ namespace RstcUpdater
         internal static async Task<int> InstallVanillaAsync(string gameDir)
         {
             AnsiConsole.MarkupLine("[grey]  目标: [/]" + Markup.Escape(gameDir));
-            AnsiConsole.MarkupLine("[grey]  来源: Mojang 官方（下载方式里可设置代理）[/]");
+            AnsiConsole.MarkupLine("[grey]  来源: 自动镜像（BMCLAPI）优先，失败回退 Mojang 官方；下载方式里可设置代理[/]");
             AnsiConsole.MarkupLine("[grey]  说明: 不下载 Java 运行时（只检测），仅安装游戏本体/库/资源。[/]");
 
             var stopwatch = Stopwatch.StartNew();

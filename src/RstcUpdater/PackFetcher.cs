@@ -51,6 +51,13 @@ namespace RstcUpdater
         /// <summary>自定义镜像前缀（例如 https://gh-proxy.com/）。</summary>
         public static string CustomMirror;
 
+        /// <summary>并行下载时抑制本模块自己的进度/提示输出，由调用方统一展示。</summary>
+        public static bool SuppressProgress;
+
+        public static long LastBytes;
+        public static long LastTotal;
+        public static double LastSpeed;
+
         internal sealed class FetchOptions
         {
             public string GameDir;
@@ -193,10 +200,13 @@ namespace RstcUpdater
                 throw new InvalidDataException("资产缺少 sha256 digest，拒绝无强校验下载: " + asset.Name);
             }
 
-            Ui.Phase("下载整合包");
-            AnsiConsole.MarkupLine("[grey]  " + Markup.Escape(asset.Name) + "（" +
-                                   (asset.Size / 1048576.0).ToString("F1") + " MiB，tag " +
-                                   Markup.Escape(asset.Tag ?? "?") + "）[/]");
+            if (!SuppressProgress)
+            {
+                Ui.Phase("下载整合包");
+                AnsiConsole.MarkupLine("[grey]  " + Markup.Escape(asset.Name) + "（" +
+                                       (asset.Size / 1048576.0).ToString("F1") + " MiB，tag " +
+                                       Markup.Escape(asset.Tag ?? "?") + "）[/]");
+            }
 
             string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
             Directory.CreateDirectory(tmpDir);
@@ -210,10 +220,13 @@ namespace RstcUpdater
             double seconds = sw.Elapsed.TotalSeconds;
             double speed = seconds > 0 && asset.Size > 0 ? asset.Size / 1048576.0 / seconds : 0;
             long freeAfter = GetFreeSpace(gameDir);
-            AnsiConsole.MarkupLine("[green]校验[/] sha256 一致；用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") +
-                                   "，" + speed.ToString("F1") + " MiB/s；剩余空间 " +
-                                   (freeAfter / 1073741824.0).ToString("F1") + " GiB（下载前 " +
-                                   (freeBefore / 1073741824.0).ToString("F1") + " GiB）");
+            if (!SuppressProgress)
+            {
+                AnsiConsole.MarkupLine("[green]校验[/] sha256 一致；用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") +
+                                       "，" + speed.ToString("F1") + " MiB/s；剩余空间 " +
+                                       (freeAfter / 1073741824.0).ToString("F1") + " GiB（下载前 " +
+                                       (freeBefore / 1073741824.0).ToString("F1") + " GiB）");
+            }
             return zipPath;
         }
         private static async Task DownloadWithMirrorsAsync(string url, string dest, long expectedSize, string expectedSha)
@@ -282,10 +295,13 @@ namespace RstcUpdater
                             Console.Out.Flush();
                             long elapsedMs = Math.Max(1, segment.ElapsedMilliseconds);
                             double mibPerSecond = total / 1048576.0 / (elapsedMs / 1000.0);
-                            AnsiConsole.MarkupLine("[green]下载完成[/] " + Markup.Escape(candidate.Value) + "，" +
-                                                   (total / 1048576.0).ToString("F1") + " MiB，" +
-                                                   TimeSpan.FromMilliseconds(elapsedMs).ToString("mm\\:ss") + "，" +
-                                                   mibPerSecond.ToString("F1") + " MiB/s");
+                            if (!SuppressProgress)
+                            {
+                                AnsiConsole.MarkupLine("[green]下载完成[/] " + Markup.Escape(candidate.Value) + "，" +
+                                                       (total / 1048576.0).ToString("F1") + " MiB，" +
+                                                       TimeSpan.FromMilliseconds(elapsedMs).ToString("mm\\:ss") + "，" +
+                                                       mibPerSecond.ToString("F1") + " MiB/s");
+                            }
 
                             string actual = ToHex(hash.GetHashAndReset());
                             if (!string.Equals(actual, expectedSha, StringComparison.OrdinalIgnoreCase))
@@ -330,7 +346,10 @@ namespace RstcUpdater
 
             if (PreferredMirror >= 0 && PreferredMirror < all.Count)
             {
+                if (!SuppressProgress)
+            {
                 AnsiConsole.MarkupLine("[cyan]下载源[/] " + Markup.Escape(all[PreferredMirror].Value) + "（手动选择）");
+            }
                 return new List<KeyValuePair<string, string>> { all[PreferredMirror] };
             }
 
@@ -342,7 +361,10 @@ namespace RstcUpdater
                     custom += "/";
                 }
 
-                AnsiConsole.MarkupLine("[cyan]下载源[/] 自定义 " + Markup.Escape(custom));
+                if (!SuppressProgress)
+                {
+                    AnsiConsole.MarkupLine("[cyan]下载源[/] 自定义 " + Markup.Escape(custom));
+                }
                 return new List<KeyValuePair<string, string>>
                 {
                     new KeyValuePair<string, string>(custom + url, "自定义镜像")
@@ -358,15 +380,22 @@ namespace RstcUpdater
 
             string report = string.Join(" · ", measured.Select(m =>
                 m.Candidate.Value + " " + (m.Speed > 0 ? m.Speed.ToString("F1") + " MiB/s" : "失败")));
-            AnsiConsole.MarkupLine("[grey]测速：[/]" + Markup.Escape(report));
+            if (!SuppressProgress)
+            {
+                AnsiConsole.MarkupLine("[grey]测速：[/]" + Markup.Escape(report));
+            }
 
             var ordered = measured
                 .OrderByDescending(m => m.Speed)
                 .Select(m => m.Candidate)
                 .ToList();
             double best = measured.Max(m => m.Speed);
-            AnsiConsole.MarkupLine("[cyan]下载源[/] 自动测速选择 " + Markup.Escape(ordered[0].Value) +
-                                   (best > 0 ? "（" + best.ToString("F1") + " MiB/s）" : "（测速失败，按顺序尝试）"));
+            if (!SuppressProgress)
+            {
+                AnsiConsole.MarkupLine("[cyan]下载源[/] 自动测速选择 " + Markup.Escape(ordered[0].Value) +
+                                       (best > 0 ? "（" + best.ToString("F1") + " MiB/s）" : "（测速失败，按顺序尝试）"));
+            }
+
             return ordered;
         }
 
@@ -431,7 +460,13 @@ namespace RstcUpdater
         private static void RenderPackProgress(string source, long done, long total, TimeSpan elapsed)
         {
             double speed = elapsed.TotalSeconds > 0 ? done / 1048576.0 / elapsed.TotalSeconds : 0;
-            ProgressLine.Draw("下载整合包", done, total, speed, source);
+            LastBytes = done;
+            LastTotal = total;
+            LastSpeed = speed;
+            if (!SuppressProgress)
+            {
+                ProgressLine.Draw("下载整合包", done, total, speed, source);
+            }
         }
         private static int SafeWidth()
         {

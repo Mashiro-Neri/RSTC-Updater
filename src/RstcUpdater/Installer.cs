@@ -33,6 +33,36 @@ namespace RstcUpdater
                 return 2;
             }
 
+            string tag = "?";
+            string assetName = "?";
+            string zipPath = null;
+            bool downloaded = false;
+            PackAssetRef packAsset = null;
+            Task<string> packTask = null;
+            if (string.IsNullOrEmpty(localZipPath))
+            {
+                ReleaseInfo release = await ReleaseClient.GetLatestByChannelAsync(ReleaseClient.PackRepo, betaChannel).ConfigureAwait(false);
+                if (release == null)
+                {
+                    Console.Error.WriteLine("无法获取整合包 Release（网络/限流，且无缓存）");
+                    return 5;
+                }
+
+                string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
+                Directory.CreateDirectory(tmpDir);
+                string releaseJson = Path.Combine(tmpDir, "latest-release.json");
+                File.WriteAllText(releaseJson, release.RawJson, new UTF8Encoding(false));
+                packAsset = PackFetcher.ResolveAsset(releaseJson, null);
+                if (packAsset == null)
+                {
+                    return 5;
+                }
+
+                PackFetcher.SuppressProgress = true;
+                packTask = PackFetcher.DownloadAssetAsync(gameDir, packAsset);
+                Ui.Note("整合包已在后台并行下载（与原版同时进行，完成后校验）…");
+            }
+
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
             Ui.Phase("下载原版 Minecraft " + Provisioner.TargetVersion);
             if (IsVanillaComplete(gameDir))
@@ -66,45 +96,31 @@ namespace RstcUpdater
                 }
             }
 
-            // 2) 先解析并校验整合包（避免"先建实例后才发现 MC 不符"）
-            Ui.Note("准备整合包（下载后校验 sha256 与 MC 版本）…");
-            string tag;
-            string assetName;
-            string zipPath;
-            bool downloaded = false;
-            if (!string.IsNullOrEmpty(localZipPath))
+            // 2) 整合包：在线时已在后台并行下载，这里等待/校验；本地 zip 直接读元数据
+            if (packTask != null)
             {
-                zipPath = Path.GetFullPath(localZipPath);
-                assetName = Path.GetFileName(zipPath);
+                try
+                {
+                    await AwaitPackDownloadAsync(packTask).ConfigureAwait(false);
+                    zipPath = await packTask.ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    PackFetcher.SuppressProgress = false;
+                    Console.Error.WriteLine("整合包后台下载失败: " + ex.GetType().Name + ": " + ex.Message);
+                    return 5;
+                }
+
+                downloaded = true;
+                assetName = packAsset.Name;
+                tag = packAsset.Tag;
+                PackFetcher.SuppressProgress = false;
+                Ui.Note("整合包后台下载完成：" + assetName);
             }
             else
             {
-                ReleaseInfo release = await ReleaseClient.GetLatestByChannelAsync(ReleaseClient.PackRepo, betaChannel).ConfigureAwait(false);
-                if (release == null)
-                {
-                    Console.Error.WriteLine("无法获取整合包 Release（网络/限流，且无缓存）");
-                    return 5;
-                }
-
-                string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
-                Directory.CreateDirectory(tmpDir);
-                string releaseJson = Path.Combine(tmpDir, "latest-release.json");
-                File.WriteAllText(releaseJson, release.RawJson, new UTF8Encoding(false));
-
-                PackAssetRef asset = PackFetcher.ResolveAsset(releaseJson, null);
-                if (asset == null)
-                {
-                    return 5;
-                }
-
-                zipPath = await PackFetcher.DownloadAssetAsync(gameDir, asset).ConfigureAwait(false);
-                downloaded = true;
-                assetName = asset.Name;
-                tag = asset.Tag;
-                goto ValidatePack;
-            }
-
-            {
+                zipPath = Path.GetFullPath(localZipPath);
+                assetName = Path.GetFileName(zipPath);
                 var localMeta = PackApplier.ReadMetadata(zipPath);
                 if (localMeta == null)
                 {
@@ -113,10 +129,7 @@ namespace RstcUpdater
                 }
 
                 tag = "local-" + (localMeta.VersionId ?? "test");
-                assetName = Path.GetFileName(zipPath);
             }
-
-        ValidatePack:
             var meta = PackApplier.ReadMetadata(zipPath);
             if (meta == null)
             {
@@ -225,6 +238,27 @@ namespace RstcUpdater
             catch (Exception)
             {
                 return false;
+            }
+        }
+
+        /// <summary>等待后台整合包下载，并在等待期间显示进度（原版下载完成后）。</summary>
+        private static async Task AwaitPackDownloadAsync(Task task)
+        {
+            while (!task.IsCompleted)
+            {
+                ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
+                    PackFetcher.LastSpeed, "并行下载中");
+                await Task.Delay(400).ConfigureAwait(false);
+            }
+
+            ProgressLine.Clear();
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            finally
+            {
+                PackFetcher.SuppressProgress = false;
             }
         }
 
