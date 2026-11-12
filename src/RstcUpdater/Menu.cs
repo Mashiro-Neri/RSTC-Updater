@@ -15,6 +15,34 @@ namespace RstcUpdater
     {
         private const int RequiredJava = 25;
 
+        private static ReleaseInfo _releaseCache;
+        private static DateTime _releaseCacheAt = DateTime.MinValue;
+
+        private static ReleaseInfo GetLatestCached(bool spinner)
+        {
+            if (_releaseCache != null && (DateTime.Now - _releaseCacheAt).TotalSeconds < 60)
+            {
+                return _releaseCache;
+            }
+
+            ReleaseInfo result = null;
+            if (spinner)
+            {
+                AnsiConsole.Status().Spinner(Spinner.Known.Dots).Start("连接 GitHub …", ctx =>
+                {
+                    result = ReleaseClient.GetLatestAsync(ReleaseClient.PackRepo).GetAwaiter().GetResult();
+                });
+            }
+            else
+            {
+                result = ReleaseClient.GetLatestAsync(ReleaseClient.PackRepo).GetAwaiter().GetResult();
+            }
+
+            _releaseCache = result;
+            _releaseCacheAt = DateTime.Now;
+            return result;
+        }
+
         private static Queue<string> _script;
 
         private static bool ScriptMode
@@ -36,16 +64,24 @@ namespace RstcUpdater
             string gameDir = ResolveGameDir(config);
             HandleUnfinishedJournals(gameDir);
 
-            if (!ScriptMode && !Console.IsOutputRedirected)
+            bool interactive = !ScriptMode && !Console.IsOutputRedirected;
+            bool firstRender = true;
+            if (!interactive)
             {
-                AnsiConsole.Clear();
+                Ui.LogoBox();
             }
-
-            Ui.LogoBox();
 
             while (true)
             {
-                RenderStatus(gameDir, config);
+                if (interactive)
+                {
+                    AnsiConsole.Clear();
+                    Ui.LogoBox(firstRender);
+                    firstRender = false;
+                }
+
+                RenderStatus(gameDir, config, interactive);
+                AnsiConsole.WriteLine();
                 Ui.Section("操作");
                 var menuChoices = new[]
                 {
@@ -65,7 +101,18 @@ namespace RstcUpdater
                 }
                 else
                 {
-                    choice = menuChoices[Ui.ArrowMenu(menuChoices)];
+                    var descriptions = new[]
+                    {
+                        "新装 26.3 + 整合包",
+                        "下载最新包并应用",
+                        "复制旧实例玩家数据",
+                        "检查实例完整性",
+                        "回滚中断的更新",
+                        "检查更新器自身更新",
+                        "修改游戏目录 / 实例",
+                        "退出程序"
+                    };
+                    choice = menuChoices[Ui.ArrowMenu(menuChoices, descriptions)];
                 }
                 try
                 {
@@ -180,7 +227,7 @@ namespace RstcUpdater
             return full;
         }
 
-        private static void RenderStatus(string gameDir, AppConfig config)
+        private static void RenderStatus(string gameDir, AppConfig config, bool compact = false)
         {
             Ui.Section("状态");
 
@@ -220,16 +267,15 @@ namespace RstcUpdater
             string latest = "无法检查更新";
             try
             {
-                var release = ReleaseClient.GetLatestAsync(ReleaseClient.PackRepo).GetAwaiter().GetResult();
+                var release = GetLatestCached(compact && !ScriptMode && !Console.IsOutputRedirected);
                 if (release != null)
                 {
                     var asset = ReleaseClient.FindPackAsset(release);
                     string ver = ReleaseClient.VersionFromAssetName(asset?.Name);
-                    latest = "[white]" + Markup.Escape(ver ?? "未知") + "[/]" +
-                             (release.IsPrerelease ? " [yellow]（Pre-release）[/]" : "");
+                    latest = (ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "");
                     if (release.FromCache)
                     {
-                        latest += " [grey]（缓存 " + Markup.Escape(release.FetchedAt?.ToString("yyyy-MM-dd") ?? "-") + "）[/]";
+                        latest += "[grey]（缓存 " + Markup.Escape(release.FetchedAt?.ToString("yyyy-MM-dd") ?? "-") + "）[/]";
                     }
                 }
             }
@@ -296,14 +342,40 @@ namespace RstcUpdater
                 }
             }
 
+            string instanceChip = string.IsNullOrEmpty(instance) ? "[yellow]●[/] 未安装" : "[green]●[/] " + instanceText;
+            string packChip = packVersion == "未安装"
+                ? "[yellow]未安装[/]"
+                : "[white]" + Markup.Escape(packVersion) + "[/][grey] / MC " + Markup.Escape(mcVersion) + "[/]";
+            string remoteChip = (latest.StartsWith("无法", StringComparison.Ordinal) || latest.Contains("Pre-release") ? "[yellow]●[/]" : "[green]●[/]") +
+                                " " + (ReleaseClient.BetaChannel ? "beta" : "stable") + " " + latest;
+            string javaChip = (javaText.Contains("就绪") ? "[green]●[/]" : "[yellow]●[/]") + " " + javaText;
+            string isoChip = (isolation.Contains("已启用隔离") && !isolation.Contains("未启用隔离") ? "[green]●[/]" : "[yellow]●[/]") + " " + isolation;
+
+            string isoShort = isolation.Contains("已启用隔离")
+                ? (isolation.Contains("PCL2") && isolation.Contains("HMCL") ? "PCL2 + HMCL" : (isolation.Contains("PCL2") ? "PCL2" : "HMCL"))
+                : "未检测到";
+            string javaShort = javaText.Contains("就绪") ? ("Java " + RequiredJava + " ✓") : ("Java 需要 " + RequiredJava);
+
+            if (compact)
+            {
+                string pathText = string.IsNullOrEmpty(gameDir)
+                    ? "[yellow]未定位[/]"
+                    : Markup.Escape(Ui.Fit(gameDir, Math.Max(18, Ui.ContentWidth() - 10)));
+                Ui.StatusLine("PATH", pathText);
+                string sep = "  [" + Ui.Dim + "]│[/]  ";
+                Ui.StatusLine("ENV", instanceChip + sep + "[" + Ui.Dim + "]整合包[/] " + packChip);
+                Ui.StatusLine("NET", remoteChip + sep + "[" + Ui.Dim + "]Java[/] " + javaShort + sep + "[" + Ui.Dim + "]隔离[/] " + isoShort);
+                return;
+            }
+
             Ui.Rows(new[]
             {
                 ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Math.Max(30, Ui.SafeWidth() - 20)))),
-                ("当前实例", (string.IsNullOrEmpty(instance) ? "[yellow]●[/] " + instanceText : "[green]●[/] " + instanceText)),
-                ("整合包", packVersion == "未安装" ? "[yellow]未安装[/]" : "[white]" + Markup.Escape(packVersion) + "[/][grey] / MC " + Markup.Escape(mcVersion) + "[/]"),
-                ("远端", (latest.StartsWith("无法", StringComparison.Ordinal) ? "[yellow]●[/] " : (latest.Contains("Pre-release") ? "[yellow]●[/] " : "[green]●[/] ")) + (ReleaseClient.BetaChannel ? "[yellow]beta[/]" : "stable") + "[grey] · 最新 [/]" + latest),
-                ("Java", (javaText.Contains("就绪") ? "[green]●[/] " : "[yellow]●[/] ") + javaText),
-                ("启动器隔离", (isolation.Contains("已启用隔离") && !isolation.Contains("未启用隔离") ? "[green]●[/] " : "[yellow]●[/] ") + isolation)
+                ("当前实例", instanceChip),
+                ("整合包", packChip),
+                ("远端", remoteChip),
+                ("Java", javaChip),
+                ("启动器隔离", isoChip)
             });
         }
 
@@ -331,6 +403,7 @@ namespace RstcUpdater
                 title += "（共 " + all.Count + " 个实例）";
             }
 
+            AnsiConsole.WriteLine();
             Ui.Section(title);
             var rows = new List<(string Label, string ValueMarkup)>();
             void Check(string name, bool exists)

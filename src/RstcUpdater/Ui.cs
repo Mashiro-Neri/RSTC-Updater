@@ -1,18 +1,22 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Spectre.Console;
 
 namespace RstcUpdater
 {
     /// <summary>
-    /// v5 终端视觉（精致版）：红石红/暗色，双线边框标题区、像素块 RST 标志、
-    /// 分段状态面板（状态圆点）、全宽反白方向键菜单。
+    /// v5 终端视觉（HUD/复古终端风）：红石红满宽标题条、3D 像素 RST、双线规则线、
+    /// 反白方向键菜单、分段状态栏。
     /// </summary>
     internal static class Ui
     {
         public const string Accent = "red";
-        public const string Dim = "grey";
+        public const string dim = "grey";
+        public const string Dim = dim;
+
+        private const int LogoRows = 5;
 
         // RST 像素字：每个字母 8 列 × 5 行，字母间 1 空格
         private static readonly string[][] Letters =
@@ -48,7 +52,7 @@ namespace RstcUpdater
         private static string[] BuildLogo()
         {
             var rows = new List<string>();
-            for (int row = 0; row < 5; row++)
+            for (int row = 0; row < LogoRows; row++)
             {
                 rows.Add(string.Join(" ", Letters.Select(l => l[row])));
             }
@@ -56,45 +60,165 @@ namespace RstcUpdater
             return rows.ToArray();
         }
 
-        public static void LogoBox()
+        public static int ContentWidth()
         {
-            int inner = Math.Min(64, Math.Max(50, SafeWidth() - 4));
-            string version = "v" + SelfUpdater.CurrentVersion;
-            string channel = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
-            string headerLeft = " RSTC // UPDATER";
-            string headerRight = version + "  ·  " + channel + " ";
+            return Math.Min(70, Math.Max(30, SafeWidth() - 2));
+        }
 
-            AnsiConsole.MarkupLine("[" + Accent + "]╔" + new string('═', inner) + "╗[/]");
-            int gap = Math.Max(1, inner - DisplayWidth(headerLeft) - DisplayWidth(headerRight));
-            AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + "[bold white]" + Markup.Escape(headerLeft) + "[/]" +
-                                   new string(' ', gap) + "[" + Dim + "]" + Markup.Escape(headerRight) + "[/]" +
-                                   "[" + Accent + "]║[/]");
-            AnsiConsole.MarkupLine("[" + Accent + "]╟" + new string('─', inner) + "╢[/]");
-            AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + new string(' ', inner) + "[" + Accent + "]║[/]");
-
-            foreach (string line in LogoLines)
+        public static int SafeHeight()
+        {
+            try
             {
-                AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + "[" + Accent + "]" +
-                                       CenterDisplay(line, inner) + "[/]" + "[" + Accent + "]║[/]");
+                int consoleHeight = Console.WindowHeight;
+                return consoleHeight > 10 ? consoleHeight : 30;
+            }
+            catch (Exception)
+            {
+                return 30;
+            }
+        }
+
+        /// <summary>HUD 标题区：满宽红条 + 3D 像素 RST + 标题行 + 双线规则线。</summary>
+        public static void LogoBox(bool animate = false)
+        {
+            int width = ContentWidth();
+            if (SafeHeight() < 24)
+            {
+                string v = "v" + SelfUpdater.CurrentVersion;
+                string ch = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
+                string l = " RSTC // UPDATER";
+                string r = v + "  ·  " + ch + " ";
+                int g = Math.Max(1, width - DisplayWidth(l) - DisplayWidth(r));
+                AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(l) + new string(' ', g) + Markup.Escape(r) + "[/]");
+                AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
+                return;
             }
 
-            AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + new string(' ', inner) + "[" + Accent + "]║[/]");
-            AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + "[bold white]" + CenterDisplay("红石镇客户端更新器", inner) + "[/]" +
-                                   "[" + Accent + "]║[/]");
-            AnsiConsole.MarkupLine("[" + Accent + "]║[/]" + "[" + Dim + "]" +
-                                   CenterDisplay("Minecraft 26.3 · Fabric 0.20.1", inner) + "[/]" +
-                                   "[" + Accent + "]║[/]");
-            AnsiConsole.MarkupLine("[" + Accent + "]╚" + new string('═', inner) + "╝[/]");
+            string version = "v" + SelfUpdater.CurrentVersion;
+            string channel = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
+            string left = " RSTC // UPDATER";
+            string right = version + "  ·  " + channel + " ";
+
+            int gap = Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right));
+            AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(left) + new string(' ', gap) + Markup.Escape(right) + "[/]");
+
+            int logoWidth = LogoLines.Max(l => l.Length);
+            int pad = Math.Max(0, (width - logoWidth) / 2);
+            for (int row = 0; row < LogoLines.Length; row++)
+            {
+                string color = row < 3 ? Accent : "maroon";
+                AnsiConsole.MarkupLine(new string(' ', pad) + "[" + color + "]" + Markup.Escape(LogoLines[row]) + "[/]");
+                if (animate)
+                {
+                    Thread.Sleep(16);
+                }
+            }
+
+            string title = "红石镇客户端更新器";
+            string subtitle = "Minecraft 26.3 · Fabric 0.20.1";
+            string plainTitleLine = title + "   »   " + subtitle;
+            int titlePad = Math.Max(0, (width - DisplayWidth(plainTitleLine)) / 2);
+            AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]" +
+                                   "   [" + Accent + "]»[/]   " + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
+            if (animate)
+            {
+                SweepRule(width);
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
+            }
+
             AnsiConsole.WriteLine();
+        }
+
+        /// <summary>3D 像素字：前层亮红，右/下加暗红斜面。</summary>
+        private static string[] BuildBevelLogo()
+        {
+            int width = LogoLines.Max(l => l.Length) + 1;
+            var result = new List<string>();
+            for (int row = 0; row <= LogoRows; row++)
+            {
+                string current = row < LogoRows ? LogoLines[row] : new string(' ', width);
+                string above = row > 0 ? LogoLines[row - 1] : new string(' ', width);
+                var markup = new System.Text.StringBuilder();
+                string color = null;
+                for (int col = 0; col < width; col++)
+                {
+                    bool front = col < current.Length && current[col] == '█';
+                    bool rightEdge = !front && col > 0 && col - 1 < current.Length && current[col - 1] == '█';
+                    bool bottomEdge = !front && !rightEdge && row > 0 && col < above.Length && above[col] == '█';
+                    string want = front ? "red" : (rightEdge || bottomEdge ? "maroon" : null);
+                    if (want != color)
+                    {
+                        if (color != null)
+                        {
+                            markup.Append("[/]");
+                        }
+
+                        if (want != null)
+                        {
+                            markup.Append("[" + want + "]");
+                        }
+
+                        color = want;
+                    }
+
+                    markup.Append(want == null ? ' ' : (front ? '█' : '▓'));
+                }
+
+                if (color != null)
+                {
+                    markup.Append("[/]");
+                }
+
+                result.Add(markup.ToString());
+            }
+
+            return result.ToArray();
+        }
+
+        private static int PlainWidth(string markup)
+        {
+            string plain = System.Text.RegularExpressions.Regex.Replace(markup, @"\[[^\]]*\]", "");
+            return DisplayWidth(plain);
         }
 
         public static void Section(string title)
         {
             int width = Math.Max(40, SafeWidth() - 2);
-            string head = "› " + title + " ";
-            int rest = Math.Max(0, width - DisplayWidth(head) - 2);
-            AnsiConsole.MarkupLine("[" + Accent + "]" + Markup.Escape(head) + "[/]" + "[" + Dim + "]" +
-                                   new string('─', rest) + "[/]");
+            string head = "▌ ▌ " + title + " ";
+            int rest = Math.Max(0, width - DisplayWidth(head) - 1);
+            AnsiConsole.MarkupLine("[" + Accent + "]▌[/] [white on red] " + Markup.Escape(title) + " [/]" +
+                                   "[" + dim + "]" + new string('─', rest) + "[/]");
+        }
+
+        /// <summary>扫描线动画（boot 时使用，约 250ms）。</summary>
+        public static void SweepRule(int width)
+        {
+            for (int step = 4; step < width; step += 5)
+            {
+                try
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Write(new string('═', step) + new string(' ', width - step));
+                    Console.SetCursorPosition(0, Console.CursorTop);
+                }
+                catch (Exception)
+                {
+                    break;
+                }
+
+                Thread.Sleep(8);
+            }
+
+            AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
+        }
+
+        /// <summary>HUD 状态行：给定标签与值，渲染一整行。</summary>
+        public static void StatusLine(string label, string valueMarkup)
+        {
+            AnsiConsole.MarkupLine("  [white on red] " + Markup.Escape(PadDisplay(label, 5)) + " [/] " + valueMarkup);
         }
 
         public static void Rows(IEnumerable<(string Label, string ValueMarkup)> rows, int labelWidth = 14)
@@ -102,29 +226,30 @@ namespace RstcUpdater
             foreach (var row in rows)
             {
                 string label = PadDisplay(row.Label, labelWidth);
-                AnsiConsole.MarkupLine("  [" + Dim + "]" + Markup.Escape(label) + "[/] " + row.ValueMarkup);
+                AnsiConsole.MarkupLine("  [white on red] " + Markup.Escape(label) + " [/] " + row.ValueMarkup);
             }
         }
 
-        /// <summary>全宽反白方向键菜单（仅交互模式）。返回选中下标。</summary>
-        public static int ArrowMenu(IReadOnlyList<string> items)
+        /// <summary>全宽反白方向键菜单：选中行带说明。返回选中下标。</summary>
+        public static int ArrowMenu(IReadOnlyList<string> items, IReadOnlyList<string> descriptions = null)
         {
             int selected = 0;
             int startTop = Math.Max(0, Console.CursorTop);
-            int width = Math.Min(SafeWidth() - 2, 66);
+            int width = ContentWidth();
 
             void Render()
             {
                 for (int i = 0; i < items.Count; i++)
                 {
                     TrySetCursor(0, startTop + i);
-                    Console.Write(new string(' ', Math.Max(0, Math.Min(SafeWidth() - 1, 70))));
+                    Console.Write(new string(' ', Math.Min(SafeWidth() - 1, 72)));
                     TrySetCursor(0, startTop + i);
                     if (i == selected)
                     {
                         Console.BackgroundColor = ConsoleColor.DarkRed;
                         Console.ForegroundColor = ConsoleColor.White;
-                        string line = "  ▶ " + items[i];
+                        string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
+                        string line = "  ▶ " + PadDisplay(items[i], 14) + "  " + desc;
                         int pad = Math.Max(0, width - DisplayWidth(line));
                         Console.Write(line + new string(' ', pad));
                         Console.ResetColor();
