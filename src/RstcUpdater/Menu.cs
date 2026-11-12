@@ -806,6 +806,90 @@ namespace RstcUpdater
         private static async Task<string> InstallActionAsync(string gameDir)
         {
             var config = AppConfig.Load();
+            if (ScriptMode)
+            {
+                return await InstallScriptedAsync(gameDir, config).ConfigureAwait(false);
+            }
+
+            Ui.Step(1, 4, "选择游戏目录");
+            string dir = ChooseInstallDir(gameDir);
+            if (dir == null)
+            {
+                return gameDir;
+            }
+
+            Ui.Step(2, 4, "实例名");
+            string name;
+            while (true)
+            {
+                name = TextPromptInput("实例名（b 返回菜单）:", "红石镇客户端", false);
+                if (name == null)
+                {
+                    return gameDir;
+                }
+
+                name = name.Trim();
+                if (!PackApplier.IsSafeInstanceName(name))
+                {
+                    Ui.Note("实例名不合法（不能含路径分隔符、盘符或保留名）", true);
+                    continue;
+                }
+
+                if (Directory.Exists(Path.Combine(dir, "versions", name)))
+                {
+                    Ui.Note("同名实例已存在，请换一个名字，或使用「更新现有实例」", true);
+                    continue;
+                }
+
+                break;
+            }
+
+            Ui.Step(3, 4, "整合包来源");
+            string localZip = null;
+            string source = SelectPrompt("请选择整合包来源:", new[]
+            {
+                "在线下载最新整合包（推荐）",
+                "使用本地 zip 文件",
+                "返回菜单"
+            });
+            if (source == null || source == "返回菜单")
+            {
+                return gameDir;
+            }
+
+            if (source == "使用本地 zip 文件")
+            {
+                string zip = TextPromptInput("本地 zip 完整路径（可拖入文件，b 返回）:", "", true);
+                if (zip == null)
+                {
+                    return gameDir;
+                }
+
+                zip = zip.Trim().Trim('"');
+                if (zip.Length == 0 || !File.Exists(zip))
+                {
+                    Ui.Note("文件不存在：" + zip, true);
+                    return gameDir;
+                }
+
+                localZip = zip;
+            }
+
+            Ui.Step(4, 4, "安装确认");
+            string sourceText = localZip == null ? "在线下载最新整合包" : "本地 zip：" + Path.GetFileName(localZip);
+            Ui.Card("安装确认", BuildInstallRows(dir, name, sourceText, false));
+
+            if (!ConfirmPrompt("开始安装？", true))
+            {
+                return gameDir;
+            }
+
+            return await RunInstallAsync(dir, name, localZip, config).ConfigureAwait(false);
+        }
+
+        /// <summary>脚本模式：保持原有提问顺序（实例名 → zip → 确认），供 menu-smoke 使用。</summary>
+        private static async Task<string> InstallScriptedAsync(string gameDir, AppConfig config)
+        {
             string dir = gameDir;
             if (string.IsNullOrEmpty(dir))
             {
@@ -837,18 +921,6 @@ namespace RstcUpdater
                 return gameDir;
             }
 
-            var javas = JavaDetector.Detect(dir);
-            bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
-            Ui.Card("安装确认", new[]
-            {
-                ("游戏目录", Markup.Escape(dir)),
-                ("实例名", Markup.Escape(name)),
-                ("预计下载", "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）"),
-                ("Java", javaOk
-                    ? "[green]Java " + RequiredJava + " 已就绪[/]"
-                    : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")
-            });
-
             string localZipInput = TextPromptInput("本地整合包 zip（留空=在线下载最新）:", "", true);
             if (localZipInput == null)
             {
@@ -856,12 +928,37 @@ namespace RstcUpdater
             }
 
             string localZip = string.IsNullOrWhiteSpace(localZipInput) ? null : localZipInput.Trim().Trim('"');
-
+            string sourceText = localZip == null ? "在线下载最新整合包" : "本地 zip：" + Path.GetFileName(localZip);
+            Ui.Card("安装确认", BuildInstallRows(dir, name, sourceText, true));
             if (!ConfirmPrompt("开始安装？", true))
             {
                 return gameDir;
             }
 
+            return await RunInstallAsync(dir, name, localZip, config).ConfigureAwait(false);
+        }
+
+        private static (string Label, string ValueMarkup)[] BuildInstallRows(string dir, string name, string sourceText, bool scriptMode)
+        {
+            var javas = JavaDetector.Detect(dir);
+            bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
+            string estimate = sourceText.StartsWith("本地 zip")
+                ? "原版约 590 MiB + 本地包（已有文件会复用）"
+                : "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）";
+            return new[]
+            {
+                ("游戏目录", Markup.Escape(dir)),
+                ("实例名", Markup.Escape(name)),
+                ("整合包来源", Markup.Escape(sourceText)),
+                ("预计下载", estimate),
+                ("Java", javaOk
+                    ? "[green]Java " + RequiredJava + " 已就绪[/]"
+                    : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")
+            };
+        }
+
+        private static async Task<string> RunInstallAsync(string dir, string name, string localZip, AppConfig config)
+        {
             int code = await Installer.InstallFlowAsync(dir, name, localZip).ConfigureAwait(false);
             if (code == 0)
             {
@@ -873,6 +970,72 @@ namespace RstcUpdater
             return dir;
         }
 
+        /// <summary>交互式选择安装目录：可使用当前目录、手动输入，Esc/B 返回。</summary>
+        private static string ChooseInstallDir(string current)
+        {
+            while (true)
+            {
+                var options = new List<string>();
+                if (!string.IsNullOrEmpty(current))
+                {
+                    options.Add("使用当前目录：" + current);
+                }
+
+                options.Add("手动输入 .minecraft 目录");
+                options.Add("返回菜单");
+
+                string choice = SelectPrompt("选择游戏目录:", options);
+                if (choice == null || choice == "返回菜单")
+                {
+                    return null;
+                }
+
+                string path;
+                if (choice.StartsWith("使用当前目录"))
+                {
+                    path = current;
+                }
+                else
+                {
+                    path = TextPromptInput("输入 .minecraft 目录路径（b 返回）:", "", true);
+                    if (path == null)
+                    {
+                        continue;
+                    }
+
+                    path = path.Trim();
+                    if (path.Length == 0)
+                    {
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    path = Path.GetFullPath(path.Trim().Trim('"'));
+                }
+                catch (Exception)
+                {
+                    Ui.Note("路径格式不正确", true);
+                    continue;
+                }
+
+                if (!Directory.Exists(path))
+                {
+                    Ui.Note("目录不存在：" + path, true);
+                    continue;
+                }
+
+                bool looksLikeMc = Directory.Exists(Path.Combine(path, "versions")) ||
+                                   File.Exists(Path.Combine(path, "options.txt"));
+                if (!looksLikeMc && !ConfirmPrompt("该目录不像 .minecraft（缺少 versions/ 与 options.txt），仍要使用？", false))
+                {
+                    continue;
+                }
+
+                return path;
+            }
+        }
         private static void HandleUnfinishedJournals(string gameDir)
         {
             if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))

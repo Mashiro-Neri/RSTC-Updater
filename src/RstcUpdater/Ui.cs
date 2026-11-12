@@ -113,6 +113,18 @@ namespace RstcUpdater
             AnsiConsole.MarkupLine("  [" + Dim + "]输入编号并回车；Ctrl+C 退出[/]");
         }
 
+        /// <summary>向导步骤行：▌ 1/4 选择游戏目录。</summary>
+        public static void Step(int step, int total, string title)
+        {
+            AnsiConsole.MarkupLine("[red]▌ " + step + "/" + total + " [/]" + "[white]" + Markup.Escape(title) + "[/]");
+        }
+
+        /// <summary>提示/警告行。</summary>
+        public static void Note(string message, bool error = false)
+        {
+            string color = error ? "red" : "yellow";
+            AnsiConsole.MarkupLine("  [" + color + "]! " + Markup.Escape(message) + "[/]");
+        }
         /// <summary>区块卡片：红色标题行 + 固定宽度键值行（用于确认/结果页，替代 Spectre 表格）。</summary>
         public static void Card(string title, IEnumerable<(string Label, string ValueMarkup)> rows)
         {
