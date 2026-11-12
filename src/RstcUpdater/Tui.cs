@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -188,16 +189,11 @@ namespace RstcUpdater
                 {
                     lines.Add(One(Text("|", ConsoleColor.Red), Text(Center(logo, width - 2), ConsoleColor.Red), Text("|", ConsoleColor.Red)));
                 }
-
-                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("红石镇客户端更新器", width - 2), ConsoleColor.White), Text("|", ConsoleColor.Red)));
-                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("Minecraft 26.3 | Fabric 0.20.1", width - 2), ConsoleColor.DarkGray), Text("|", ConsoleColor.Red)));
-            }
-            else
-            {
-                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("红石镇客户端更新器  |  Minecraft 26.3", width - 2), ConsoleColor.White), Text("|", ConsoleColor.Red)));
             }
 
             lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
+            lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.White)));
+            lines.Add(One(Text(Center("Minecraft 26.3 | Fabric 0.20.1", width), ConsoleColor.DarkGray)));
             lines.Add(One(Text("", ConsoleColor.Gray)));
 
             foreach (var row in status)
@@ -299,14 +295,66 @@ namespace RstcUpdater
             }
         }
 
-        private static readonly string[] Logo =
+        private static readonly string[][] Letters =
         {
-            "#####    ####   #######",
-            "#   #   #          #   ",
-            "#####   ####       #   ",
-            "#  #        #      #   ",
-            "#   #   ####       #   "
+            new[]
+            {
+                "#####",
+                "#   #",
+                "#####",
+                "#  # ",
+                "#   #"
+            },
+            new[]
+            {
+                " ####",
+                "#    ",
+                " ####",
+                "    #",
+                "#### "
+            },
+            new[]
+            {
+                "#######",
+                "   #   ",
+                "   #   ",
+                "   #   ",
+                "   #   "
+            }
         };
+
+        private static readonly string[] Logo = BuildLogo();
+
+        private static string[] BuildLogo()
+        {
+            var rows = new List<string>();
+            int width = Letters.Max(l => l.Max(r => r.Length));
+            for (int row = 0; row < 5; row++)
+            {
+                var parts = Letters.Select(l => l[row].PadRight(width)).ToArray();
+                string combined = string.Join("  ", parts);
+                var scaled = new StringBuilder();
+                foreach (char c in combined)
+                {
+                    scaled.Append(c == '#' ? "##" : "  ");
+                }
+
+                rows.Add(scaled.ToString());
+            }
+
+            return rows.ToArray();
+        }
+
+        private static string ScaleLogo(string line)
+        {
+            var builder = new StringBuilder();
+            foreach (char c in line)
+            {
+                builder.Append(c == '#' ? "##" : "  ");
+            }
+
+            return builder.ToString();
+        }
 
         private static string Center(string text, int width)
         {
