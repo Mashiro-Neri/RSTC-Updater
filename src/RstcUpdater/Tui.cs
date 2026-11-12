@@ -172,32 +172,32 @@ namespace RstcUpdater
             bool full = windowHeight >= 30;
 
             var lines = new List<Line>();
-            string inner = new string('─', width - 2);
+            string inner = new string('-', width - 2);
 
-            lines.Add(One(Text("┌" + inner + "┐", ConsoleColor.Red)));
+            lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
 
             string left = " RSTC // UPDATER";
-            string right = version + " · " + channel + " ";
+            string right = version + " | " + channel + " ";
             string header = Pad(left + new string(' ', Math.Max(1, width - 2 - DisplayWidth(left) - DisplayWidth(right))) + right, width - 2);
-            lines.Add(One(Text("│", ConsoleColor.Red), Text(header, ConsoleColor.White), Text("│", ConsoleColor.Red)));
+            lines.Add(One(Text("|", ConsoleColor.Red), Text(header, ConsoleColor.White), Text("|", ConsoleColor.Red)));
 
             if (full)
             {
-                lines.Add(One(Text("│" + new string(' ', width - 2) + "│", ConsoleColor.Red)));
+                lines.Add(One(Text("|" + new string(' ', width - 2) + "|", ConsoleColor.Red)));
                 foreach (string logo in Logo)
                 {
-                    lines.Add(One(Text("│", ConsoleColor.Red), Text(Center(logo, width - 2), ConsoleColor.Red), Text("│", ConsoleColor.Red)));
+                    lines.Add(One(Text("|", ConsoleColor.Red), Text(Center(logo, width - 2), ConsoleColor.Red), Text("|", ConsoleColor.Red)));
                 }
 
-                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("红石镇客户端更新器", width - 2), ConsoleColor.White), Text("│", ConsoleColor.Red)));
-                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("Minecraft 26.3 · Fabric 0.20.1", width - 2), ConsoleColor.DarkGray), Text("│", ConsoleColor.Red)));
+                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("红石镇客户端更新器", width - 2), ConsoleColor.White), Text("|", ConsoleColor.Red)));
+                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("Minecraft 26.3 | Fabric 0.20.1", width - 2), ConsoleColor.DarkGray), Text("|", ConsoleColor.Red)));
             }
             else
             {
-                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("红石镇客户端更新器  ·  Minecraft 26.3", width - 2), ConsoleColor.White), Text("│", ConsoleColor.Red)));
+                lines.Add(One(Text("|", ConsoleColor.Red), Text(Center("红石镇客户端更新器  |  Minecraft 26.3", width - 2), ConsoleColor.White), Text("|", ConsoleColor.Red)));
             }
 
-            lines.Add(One(Text("└" + inner + "┘", ConsoleColor.Red)));
+            lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
             lines.Add(One(Text("", ConsoleColor.Gray)));
 
             foreach (var row in status)
@@ -206,7 +206,7 @@ namespace RstcUpdater
                 string value = Fit(row.Value, Math.Max(10, width - 16));
                 lines.Add(One(
                     Text(" " + label + " ", ConsoleColor.DarkGray),
-                    Text("●", row.Dot),
+                    Text("*", row.Dot),
                     Text(" " + value, ConsoleColor.Gray)));
             }
 
@@ -217,7 +217,7 @@ namespace RstcUpdater
                 string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
                 if (i == selected)
                 {
-                    string text = "  ▶ " + Pad(items[i], 16) + " " + desc;
+                    string text = "  > " + Pad(items[i], 16) + " " + desc;
                     lines.Add(One(Filled(text, ConsoleColor.White, ConsoleColor.DarkRed)));
                 }
                 else
@@ -228,7 +228,7 @@ namespace RstcUpdater
                 }
             }
 
-            lines.Add(One(Text("  ↑ ↓ 移动    Enter 确认    Ctrl+C 退出", ConsoleColor.DarkGray)));
+            lines.Add(One(Text("  ^ v 移动    Enter 确认    Ctrl+C 退出", ConsoleColor.DarkGray)));
 
             int maxLines = Math.Max(6, windowHeight - 1);
             Console.ResetColor();
@@ -301,11 +301,11 @@ namespace RstcUpdater
 
         private static readonly string[] Logo =
         {
-            "██████   ██████  ████████",
-            "██   ██ ██          ██   ",
-            "██████  ██████      ██   ",
-            "██  ██        ██    ██   ",
-            "██   ██ ██████      ██   "
+            "#####    ####   #######",
+            "#   #   #          #   ",
+            "#####   ####       #   ",
+            "#  #        #      #   ",
+            "#   #   ####       #   "
         };
 
         private static string Center(string text, int width)
