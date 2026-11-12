@@ -48,6 +48,22 @@ namespace RstcUpdater
                     return 5;
                 }
 
+                if (!betaChannel)
+                {
+                    string stableVer = ReleaseClient.VersionFromAssetName(ReleaseClient.FindPackAsset(release)?.Name);
+                    if (IsLegacyPackVersion(stableVer))
+                    {
+                        Ui.Note("稳定版 " + stableVer + " 基于旧版 Minecraft，与目标 " + Provisioner.TargetVersion +
+                                " 不兼容；自动改用内测 Beta 通道…");
+                        ReleaseInfo betaRelease = await ReleaseClient.GetLatestByChannelAsync(ReleaseClient.PackRepo, true).ConfigureAwait(false);
+                        if (betaRelease != null)
+                        {
+                            release = betaRelease;
+                            betaChannel = true;
+                        }
+                    }
+                }
+
                 string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
                 Directory.CreateDirectory(tmpDir);
                 string releaseJson = Path.Combine(tmpDir, "latest-release.json");
@@ -281,6 +297,29 @@ namespace RstcUpdater
             }
         }
 
+        /// <summary>稳定版整合包版本低于 6.0 时视为旧 MC 基准（5.x 是 1.21.10），自动切 Beta。</summary>
+        private static bool IsLegacyPackVersion(string version)
+        {
+            if (string.IsNullOrEmpty(version))
+            {
+                return false;
+            }
+
+            int major = 0;
+            foreach (char c in version)
+            {
+                if (char.IsDigit(c))
+                {
+                    major = major * 10 + (c - '0');
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return major > 0 && major < 6;
+        }
         private static void PrintCompletion(string gameDir, string instanceName, string tag, string assetName)
         {
             Ui.Card("安装完成", new[]
