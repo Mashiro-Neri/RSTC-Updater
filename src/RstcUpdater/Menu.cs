@@ -47,7 +47,6 @@ namespace RstcUpdater
             {
                 RenderStatus(gameDir, config);
                 Ui.Section("操作");
-                AnsiConsole.MarkupLine("[" + Ui.Dim + "]  ▲ ▼ 移动    Enter 确认[/]");
                 var menuChoices = new[]
                 {
                     "安装到新目录",
@@ -59,7 +58,15 @@ namespace RstcUpdater
                     "设置",
                     "退出"
                 };
-                string choice = SelectPrompt("[red]请选择：[/]", menuChoices);
+                string choice;
+                if (ScriptMode)
+                {
+                    choice = SelectPrompt("[grey]请选择操作[/]", menuChoices);
+                }
+                else
+                {
+                    choice = menuChoices[Ui.ArrowMenu(menuChoices)];
+                }
                 try
                 {
                     switch (choice)
@@ -292,11 +299,11 @@ namespace RstcUpdater
             Ui.Rows(new[]
             {
                 ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Math.Max(30, Ui.SafeWidth() - 20)))),
-                ("当前实例", instanceText),
+                ("当前实例", (string.IsNullOrEmpty(instance) ? "[yellow]●[/] " + instanceText : "[green]●[/] " + instanceText)),
                 ("整合包", packVersion == "未安装" ? "[yellow]未安装[/]" : "[white]" + Markup.Escape(packVersion) + "[/][grey] / MC " + Markup.Escape(mcVersion) + "[/]"),
-                ("远端", (ReleaseClient.BetaChannel ? "[yellow]beta[/]" : "stable") + "[grey] · 最新 [/]" + latest),
-                ("Java", javaText),
-                ("启动器隔离", isolation)
+                ("远端", (latest.StartsWith("无法", StringComparison.Ordinal) ? "[yellow]●[/] " : (latest.Contains("Pre-release") ? "[yellow]●[/] " : "[green]●[/] ")) + (ReleaseClient.BetaChannel ? "[yellow]beta[/]" : "stable") + "[grey] · 最新 [/]" + latest),
+                ("Java", (javaText.Contains("就绪") ? "[green]●[/] " : "[yellow]●[/] ") + javaText),
+                ("启动器隔离", (isolation.Contains("已启用隔离") && !isolation.Contains("未启用隔离") ? "[green]●[/] " : "[yellow]●[/] ") + isolation)
             });
         }
 
