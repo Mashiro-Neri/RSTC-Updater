@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -208,7 +209,7 @@ namespace RstcUpdater
 
                 Directory.CreateDirectory(Path.Combine(dir, "mods"));
                 Directory.CreateDirectory(Path.Combine(dir, "config"));
-                WriteLauncherConfigs(dir, instanceName, variant);
+                WriteLauncherConfigs(dir, instanceName, variant, vanilla["releaseTime"]?.GetValue<string>());
                 return true;
             }
             catch (Exception ex)
@@ -479,7 +480,12 @@ namespace RstcUpdater
             return sb.ToString();
         }
 
-        private static void WriteLauncherConfigs(string instanceDir, string instanceName, string variant)
+        /// <summary>
+        /// 写启动器隔离/识别配置。关键点：PCL2 只在“首次启动”（Setup.ini 缺 State）时改写
+        /// 游戏语言，且对无法识别版本的实例会写大写语言码（如 zh_CN），26.3 只认小写 → 英文。
+        /// 因此安装时就把 PCL 所需的完整字段（含 State:9）写好，让 PCL 走“并非首次启动”。
+        /// </summary>
+        private static void WriteLauncherConfigs(string instanceDir, string instanceName, string variant, string releaseTime)
         {
             string pclDir = Path.Combine(instanceDir, "PCL");
             Directory.CreateDirectory(pclDir);
@@ -491,11 +497,21 @@ namespace RstcUpdater
                 values.AddRange(File.ReadAllLines(setupPath, Encoding.UTF8));
             }
 
-            UpsertIni(values, "VersionVanillaName", TargetVersion);
+            UpsertIni(values, "VersionLiteLoader", "False");
             UpsertIni(values, "VersionFabric", FabricLoader);
-            UpsertIni(values, "Info", "红石镇客户端 " + TargetVersion + " Fabric " + FabricLoader);
+            UpsertIni(values, "VersionVanillaName", TargetVersion);
+            UpsertIni(values, "VersionVanilla", TargetVersion + ".0");
+            UpsertIni(values, "Info", "正式版 " + TargetVersion + ", Fabric " + FabricLoader);
             UpsertIni(values, "VersionArgumentIndieV2", "True");
             UpsertIni(values, "VersionArgumentIndie", "1");
+            UpsertIni(values, "State", "9");
+            UpsertIni(values, "Logo", "pack://application:,,,/Plain Craft Launcher 2;component/Images/Blocks/Fabric.png");
+            if (!string.IsNullOrEmpty(releaseTime) &&
+                DateTime.TryParse(releaseTime, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime released))
+            {
+                UpsertIni(values, "ReleaseTime", released.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+            }
+
             File.WriteAllText(setupPath, string.Join("\r\n", values) + "\r\n", new UTF8Encoding(false));
 
             string hmclPath = Path.Combine(instanceDir, "hmclversion.cfg");

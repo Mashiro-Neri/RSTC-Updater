@@ -412,6 +412,9 @@ namespace RstcUpdater
                 File.WriteAllText(Path.Combine(instanceFull, "modrinth.index.json"), plan.IndexJson, new UTF8Encoding(false));
                 File.WriteAllText(Path.Combine(instanceFull, "RSTC_version.txt"), plan.Tag, new UTF8Encoding(false));
 
+                // 修复 PCL2 首次启动写入的大写语言码（如 zh_CN → zh_cn），26.3 只认小写
+                NormalizeLanguage(instanceFull);
+
                 journal["status"] = "done";
                 journal["finishedAt"] = DateTime.Now.ToString("o");
                 File.WriteAllText(journalPath, journal.ToJsonString(), new UTF8Encoding(false));
@@ -552,6 +555,45 @@ namespace RstcUpdater
             {
                 Console.Error.WriteLine("回滚失败（journal 未标记 rolledback）: " + ex.GetType().Name + ": " + ex.Message);
                 return 7;
+            }
+        }
+
+        /// <summary>把 options.txt 里的语言码规范为小写（Minecraft 语言码约定为小写）。</summary>
+        private static void NormalizeLanguage(string instanceDir)
+        {
+            string optionsPath = Path.Combine(instanceDir, "options.txt");
+            if (!File.Exists(optionsPath))
+            {
+                return;
+            }
+
+            try
+            {
+                var lines = File.ReadAllLines(optionsPath, Encoding.UTF8).ToList();
+                bool changed = false;
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    if (!lines[i].StartsWith("lang:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string code = lines[i].Substring("lang:".Length).Trim();
+                    string lower = code.ToLowerInvariant();
+                    if (lower != code && System.Text.RegularExpressions.Regex.IsMatch(lower, "^[a-z]{2,3}_[a-z]{2}$"))
+                    {
+                        lines[i] = "lang:" + lower;
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    File.WriteAllLines(optionsPath, lines, new UTF8Encoding(false));
+                }
+            }
+            catch (Exception)
+            {
             }
         }
 

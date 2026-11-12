@@ -60,3 +60,10 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 用户实测：`PCL2: A2=ok A1=ok B=ok；HMCL: A2=ok A1=ok B=ok`。
 - 日志（evidence/acceptance/20261112_193644/a1b/）：三实例均 Loading Minecraft 26.3 with Fabric Loader 0.20.1、Loading 7 mods、进 Render thread、Stopping!，无 Exception。
 - 结论：0-2/0-3 用户验收 PASS；V1 默认实例方案维持 A2。
+
+## 9. V1 后补修复（PCL2 语言，2026-11-12）
+
+- 根因：PCL2 首次启动把新实例语言写成大写 `zh_CN`，26.3 只认 `zh_cn` → 英文。
+- 修复：安装时预写 PCL `Setup.ini`（`State:9` 等），并在安装/更新后把语言码规范小写。
+- 用户实测：重装 RSTC-6.0-TEST 后启动为中文（120 mods 正常）。
+- 该改动在 V1 冻结（`9d90e54`）之后，需一轮快速复审。
