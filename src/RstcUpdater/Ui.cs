@@ -67,13 +67,20 @@ namespace RstcUpdater
             string barRight = version + " · " + channel + " ";
 
             AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(PadDisplay(barLeft + new string(' ', Math.Max(1, W - DisplayWidth(barLeft) - DisplayWidth(barRight))) + barRight, W)) + "[/]");
-            foreach (string line in LogoLines)
+            if (SafeHeight() >= 30)
             {
-                AnsiConsole.MarkupLine("[red]" + Markup.Escape(CenterDisplay(line, W)) + "[/]");
-            }
+                foreach (string line in LogoLines)
+                {
+                    AnsiConsole.MarkupLine("[red]" + Markup.Escape(CenterDisplay(line, W)) + "[/]");
+                }
 
-            AnsiConsole.MarkupLine("[bold white]" + Markup.Escape(CenterDisplay("红石镇客户端更新器", W)) + "[/]");
-            AnsiConsole.MarkupLine("[grey]" + Markup.Escape(CenterDisplay("Minecraft 26.3 · Fabric 0.20.1", W)) + "[/]");
+                AnsiConsole.MarkupLine("[bold white]" + Markup.Escape(CenterDisplay("红石镇客户端更新器", W)) + "[/]");
+                AnsiConsole.MarkupLine("[grey]" + Markup.Escape(CenterDisplay("Minecraft 26.3 · Fabric 0.20.1", W)) + "[/]");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[bold white]" + Markup.Escape(CenterDisplay("红石镇客户端更新器 · Minecraft 26.3 · Fabric", W)) + "[/]");
+            }
             AnsiConsole.MarkupLine("[red]" + new string('─', W) + "[/]");
             AnsiConsole.WriteLine();
         }
@@ -149,6 +156,19 @@ namespace RstcUpdater
             }
 
             return width;
+        }
+
+        public static int SafeHeight()
+        {
+            try
+            {
+                int consoleHeight = Console.WindowHeight;
+                return consoleHeight > 10 ? consoleHeight : 30;
+            }
+            catch (Exception)
+            {
+                return 30;
+            }
         }
 
         public static int SafeWidth()
