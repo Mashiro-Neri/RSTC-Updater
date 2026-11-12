@@ -247,7 +247,12 @@ namespace RstcUpdater
 
                 prepared.RemoteTag = release.Tag;
                 ReleaseAsset asset = ReleaseClient.FindPackAsset(release);
-                prepared.RemoteVersion = ReleaseClient.VersionFromAssetName(asset?.Name);
+                if (asset == null)
+                {
+                    throw new FlowFailureException(5, "Release 中没有 RSTC-*.zip 资产");
+                }
+
+                prepared.RemoteVersion = ReleaseClient.VersionFromAssetName(asset.Name);
                 int remoteCompare = CompareVersions(prepared.RemoteVersion, versionId);
                 if (!options.Force && remoteCompare <= 0)
                 {
@@ -328,7 +333,21 @@ namespace RstcUpdater
                 Tag = prepared.RemoteTag
             };
             prepared.PackOptions = packOptions;
-            prepared.Plan = PackApplier.Preview(gameDir, prepared.ZipPath, options.Instance, packOptions);
+            try
+            {
+                prepared.Plan = PackApplier.Preview(gameDir, prepared.ZipPath, options.Instance, packOptions);
+            }
+            catch (Exception)
+            {
+                // 预览失败（如 zip 含不安全条目）：清理已下载的临时包，避免 .rstc-tmp 残留
+                if (prepared.Downloaded)
+                {
+                    DeleteFileQuiet(prepared.ZipPath);
+                }
+
+                throw;
+            }
+
             PrintPlan(prepared);
             return prepared;
         }

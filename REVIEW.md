@@ -43,7 +43,7 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 |---|---|---|---|
 | 1 | 9c67a6b | review-open：H1（迁移覆盖）+ M1/M2/M3/M5/M6/M8 | `evidence/v1/review/20261112_0023/REVIEW_REPORT.md` |
 | 2 | 9fea547 | 6 项 closed；新 R2-M1（迁移遇只读目标崩溃/部分写入） | `evidence/v1/review/20261112_0038/REVIEW_REPORT.md` |
-| 3 | f0c3fae（代码 `f5e8467`） | **PASS**：无未关闭 BLOCKER/HIGH/MEDIUM；M6 PARTIAL 不阻断（替换路径在无 v5 资产时不可达） | `evidence/v1/review/20261112_0052/REVIEW_REPORT.md` |
+| 3 | f0c3fae（代码 `f5e8467`） | **PASS**：无未关闭 BLOCKER/HIGH/MEDIUM；M6 PARTIAL 不阻断（替换路径在无 v5 资产时不可达） | `evidence/v1/review/20261112_0052/REVIEW_REPORT.md` |
 
 - 冒烟：`scripts/v1/smoke.ps1` 30 条断言，最近一次 PASS 绑代码 commit `29f02b2`（证据 `evidence/v1/smoke/29f02b2…/`）。
 - 开放 LOW/NIT（不阻断）：自更新 `/PURGE` 与 E1/E2 实际替换（**发布 v5 自更新资产前必须补验**）、TUI 完整动作按键、真实网络卡死/403。
