@@ -845,89 +845,7 @@ namespace RstcUpdater
                 break;
             }
 
-            Ui.Step(3, 5, "选择下载方式");
-            while (true)
-            {
-                string mode = SelectPrompt("请选择下载方式:", new[]
-                {
-                    "自动测速 - 选最快的",
-                    "手动选择 - 自己挑镜像",
-                    "自定义镜像地址",
-                    "设置 HTTP 代理（可选）",
-                    "返回菜单"
-                });
-                if (mode == null || mode == "返回菜单")
-                {
-                    return gameDir;
-                }
-
-                if (mode.StartsWith("自动测速"))
-                {
-                    PackFetcher.PreferredMirror = -1;
-                    PackFetcher.CustomMirror = null;
-                    break;
-                }
-
-                if (mode.StartsWith("手动选择"))
-                {
-                    var mirrorChoices = new List<string>(PackFetcher.MirrorNames)
-                    {
-                        "自定义",
-                        "返回"
-                    };
-                    string mirror = SelectPrompt("请选择:", mirrorChoices);
-                    if (mirror == null || mirror == "返回")
-                    {
-                        continue;
-                    }
-
-                    if (mirror == "自定义")
-                    {
-                        string custom = TextPromptInput("镜像地址（例如 https://gh-proxy.com/；b 返回）:", "", true);
-                        if (custom == null || string.IsNullOrWhiteSpace(custom))
-                        {
-                            continue;
-                        }
-
-                        PackFetcher.CustomMirror = custom.Trim();
-                        PackFetcher.PreferredMirror = -2;
-                        break;
-                    }
-
-                    if (mirror == "GitHub 直连")
-                    {
-                        mirror = "GitHub 直连（可能需要梯子）";
-                    }
-
-                    int index = Array.IndexOf(PackFetcher.MirrorNames, mirror.Replace("（可能需要梯子）", ""));
-                    PackFetcher.PreferredMirror = index;
-                    break;
-                }
-
-                if (mode.StartsWith("自定义"))
-                {
-                    string custom = TextPromptInput("镜像地址（例如 https://gh-proxy.com/；b 返回）:", "", true);
-                    if (custom == null || string.IsNullOrWhiteSpace(custom))
-                    {
-                        continue;
-                    }
-
-                    PackFetcher.CustomMirror = custom.Trim();
-                    PackFetcher.PreferredMirror = -2;
-                    break;
-                }
-
-                string proxy = TextPromptInput("HTTP 代理（可留空，例 http://127.0.0.1:7890；b 返回）:", "", true);
-                if (proxy == null)
-                {
-                    continue;
-                }
-
-                NetworkConfig.ProxyUrl = string.IsNullOrWhiteSpace(proxy) ? null : proxy.Trim();
-                Ui.Note(string.IsNullOrEmpty(NetworkConfig.ProxyUrl) ? "代理已关闭" : "代理已设置：" + NetworkConfig.ProxyUrl);
-            }
-
-            Ui.Step(4, 5, "整合包来源");
+            Ui.Step(3, 5, "整合包来源");
             string localZip = null;
             string source = SelectPrompt("请选择整合包来源:", new[]
             {
@@ -969,6 +887,92 @@ namespace RstcUpdater
                 }
 
                 localZip = zip;
+                Ui.Step(4, 5, "下载方式");
+                Ui.Note("使用本地 zip，跳过下载源选择；原版 Minecraft 不经过镜像，如需代理可在后续版本设置。");
+            }
+            else
+            {
+                Ui.Step(4, 5, "下载方式");
+                while (true)
+                {
+                    string mode = SelectPrompt("请选择下载方式:", new[]
+                    {
+                        "自动测速 - 选最快的",
+                        "手动选择 - 自己挑镜像",
+                        "自定义镜像地址",
+                        "设置 HTTP 代理（可选）",
+                        "返回菜单"
+                    });
+                    if (mode == null || mode == "返回菜单")
+                    {
+                        return gameDir;
+                    }
+
+                    if (mode.StartsWith("自动测速"))
+                    {
+                        PackFetcher.PreferredMirror = -1;
+                        PackFetcher.CustomMirror = null;
+                        break;
+                    }
+
+                    if (mode.StartsWith("手动选择"))
+                    {
+                        var mirrorChoices = PackFetcher.MirrorNames
+                            .Select(n => n == "GitHub 直连" ? n + "（可能需要梯子）" : n)
+                            .ToList();
+                        mirrorChoices.Add("自定义");
+                        mirrorChoices.Add("返回");
+                        string mirror = SelectPrompt("请选择:", mirrorChoices);
+                        if (mirror == null || mirror == "返回")
+                        {
+                            continue;
+                        }
+
+                        if (mirror == "自定义")
+                        {
+                            string custom = TextPromptInput("镜像地址（例如 https://gh-proxy.com/；b 返回）:", "", true);
+                            if (custom == null || string.IsNullOrWhiteSpace(custom))
+                            {
+                                continue;
+                            }
+
+                            PackFetcher.CustomMirror = custom.Trim();
+                            PackFetcher.PreferredMirror = -2;
+                            break;
+                        }
+
+                        if (mirror == "GitHub 直连")
+                        {
+                            mirror = "GitHub 直连（可能需要梯子）";
+                        }
+
+                        int index = Array.IndexOf(PackFetcher.MirrorNames, mirror.Replace("（可能需要梯子）", ""));
+                        PackFetcher.PreferredMirror = index;
+                        break;
+                    }
+
+                    if (mode.StartsWith("自定义"))
+                    {
+                        string custom = TextPromptInput("镜像地址（例如 https://gh-proxy.com/；b 返回）:", "", true);
+                        if (custom == null || string.IsNullOrWhiteSpace(custom))
+                        {
+                            continue;
+                        }
+
+                        PackFetcher.CustomMirror = custom.Trim();
+                        PackFetcher.PreferredMirror = -2;
+                        break;
+                    }
+
+                    string proxy = TextPromptInput("HTTP 代理（可留空，例 http://127.0.0.1:7890；b 返回）:", "", true);
+                    if (proxy == null)
+                    {
+                        continue;
+                    }
+
+                    NetworkConfig.ProxyUrl = string.IsNullOrWhiteSpace(proxy) ? null : proxy.Trim();
+                    Ui.Note(string.IsNullOrEmpty(NetworkConfig.ProxyUrl) ? "代理已关闭" : "代理已设置：" + NetworkConfig.ProxyUrl);
+                }
             }
 
             Ui.Step(5, 5, "安装确认");
