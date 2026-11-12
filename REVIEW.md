@@ -49,9 +49,9 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 开放 LOW/NIT（不阻断）：自更新 `/PURGE` 与 E1/E2 实际替换（**发布 v5 自更新资产前必须补验**）、TUI 完整动作按键、真实网络卡死/403。
 - 未验证（不得 verified）：A1b（PCL2/HMCL 实际启动/mod 生效）、真实 6.0/v5 Release 成功路径、0-7、用户验收。
 
-## 7. 已接受 NIT（V1 代码冻结于 `9d90e54`，审查对象 `4dd289e` PASS）
+## 7. 已接受 NIT（V1 代码基线 `62bde99`，第 6 轮复审 PASS）
 
-- R4-N4（partial）：MultiPrompt 未匹配 token 静默忽略；HandleUnfinishedJournals 的 catch 仍会吞 FlowFailureException（仅在脚本化异常输入下可见）。
+- R4-N4（partial）：MultiPrompt 未匹配 token 静默忽略（journal 提示的 FlowFailureException 已在 `62bde99` 修复上抛）。
 - R4-N2/R4-N5（open）：删除清单 PageSize、SelfUpdater 其他早期 abort 的 %TEMP% 清理。
 - 未来出现 v5 自更新资产后，需把 menu-smoke 脚本输入扩为 12+ 行并补 E1/E2 实测。
 
@@ -66,4 +66,4 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 根因：PCL2 首次启动把新实例语言写成大写 `zh_CN`，26.3 只认 `zh_cn` → 英文。
 - 修复：安装时预写 PCL `Setup.ini`（`State:9` 等），并在安装/更新后把语言码规范小写。
 - 用户实测：重装 RSTC-6.0-TEST 后启动为中文（120 mods 正常）。
-- 该改动在 V1 冻结（`9d90e54`）之后，需一轮快速复审。
+- 该改动已由第 6 轮复审 PASS（`evidence/v1/review/20261112_2100/`）。
