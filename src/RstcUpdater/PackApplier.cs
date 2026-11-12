@@ -95,8 +95,28 @@ namespace RstcUpdater
             }
         }
 
-        /// <summary>只计算计划，不做任何写入（zip 由调用方负责 Dispose）。</summary>
+        /// <summary>只计算计划，不做任何写入（zip 由调用方负责 Dispose；抛错时本方法负责释放）。</summary>
         internal static PackPlan BuildPlan(string gameDir, string zipPath, string instanceName, PackOptions options, out ZipArchive zip)
+        {
+            ZipArchive opened = null;
+            try
+            {
+                PackPlan plan = BuildPlanCore(gameDir, zipPath, instanceName, options, out opened);
+                zip = opened;
+                return plan;
+            }
+            catch (Exception)
+            {
+                if (opened != null)
+                {
+                    opened.Dispose();
+                }
+
+                throw;
+            }
+        }
+
+        private static PackPlan BuildPlanCore(string gameDir, string zipPath, string instanceName, PackOptions options, out ZipArchive zip)
         {
             string instanceDir = Path.Combine(gameDir, "versions", instanceName);
             string instanceFull = Path.GetFullPath(instanceDir);
@@ -238,13 +258,21 @@ namespace RstcUpdater
             return plan;
         }
 
-        /// <summary>预览：不写入，返回计划（zip 已释放）。</summary>
+        /// <summary>预览：不写入，返回计划（zip 已释放；异常时 BuildPlan 已释放）。</summary>
         public static PackPlan Preview(string gameDir, string zipPath, string instanceName, PackOptions options)
         {
-            ZipArchive zip;
-            PackPlan plan = BuildPlan(gameDir, zipPath, instanceName, options, out zip);
-            zip.Dispose();
-            return plan;
+            ZipArchive zip = null;
+            try
+            {
+                return BuildPlan(gameDir, zipPath, instanceName, options, out zip);
+            }
+            finally
+            {
+                if (zip != null)
+                {
+                    zip.Dispose();
+                }
+            }
         }
 
         // ==================== 应用 ====================

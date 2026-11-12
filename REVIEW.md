@@ -74,3 +74,9 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 菜单状态新增「通道」行与「（Pre-release）」标记。
 - 真实在线：空目录安装 6.0 Beta 成功（120 mods / sha256 一致 / PACK_APPLY=PASS），update 报已最新。
 - 证据 `evidence/v1/online-beta-20261112_210729/`；需一轮快速复审（对 62bde99 之后 diff）。
+
+## 11. R9 复审发现与真正修复（2026-11-12）
+
+- R9 复审在 `27fd895` 上复现：越界 zip 经预览失败后 `.rstc-tmp` 仍残留（ZipArchive 句柄在 `BuildPlan` 抛错时未释放，删除被占用而静默失败）→ R8-1 实际未关闭。
+- 修复：`BuildPlan` 打开句柄即负责释放（抛错时 Dispose）、`Preview` finally 释放、`DeleteFileQuiet` 增加重试；复现脚本（伪造 release 缓存 + 本地 HTTP + 越界 zip + 无效 token）实测 exit 7、实例未动、`zip_left=False`。
+- 证据：`evidence/v1/review/20261112_2139/`（R9 报告）+ 本轮复现输出（见对话/R10 报告）。

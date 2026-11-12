@@ -171,15 +171,34 @@ namespace RstcUpdater
 
         private static void DeleteFileQuiet(string path)
         {
-            try
+            if (string.IsNullOrEmpty(path))
             {
-                if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                {
-                    File.Delete(path);
-                }
+                return;
             }
-            catch (Exception)
+
+            for (int attempt = 0; attempt < 5; attempt++)
             {
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        File.Delete(path);
+                    }
+
+                    return;
+                }
+                catch (IOException)
+                {
+                    System.Threading.Thread.Sleep(150);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    System.Threading.Thread.Sleep(150);
+                }
+                catch (Exception)
+                {
+                    return;
+                }
             }
         }
 
