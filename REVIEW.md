@@ -124,3 +124,10 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 菜单为全宽反白选中条（▶ + 说明），底部 `↑ ↓ 移动 Enter 确认`；交互模式每轮清屏重绘，避免滚动把标题挤出屏幕。
 - GitHub Release 查询加 60s 进程内缓存 + 首次查询显示 spinner，减少菜单重绘卡顿。
 - 窄终端/矮终端降级：高度 <24 行时只显示标题条+规则线。
+
+## 18. UI 重做（纯 Spectre 渲染，2026-11-12，待复审）
+
+- R13 复审结论：c7293b2 的“手写光标 HUD”在 80×30 真实控制台花屏（R13-1 HIGH，UI-only）；业务无回归。
+- 决策：放弃手写光标/背景色混合方案，改为**纯 Spectre 渲染**——重型红框标题面板（居中 RST 像素字）、圆角红框状态表、SelectionPrompt 方向键菜单；不再手工 SetCursorPosition/ConsoleColor，避免渲染污染。
+- 已删除 `Ui.ArrowMenu` 的手写实现（改为内部 SelectionPrompt），删除扫描线/满宽红条/徽章等易污染元素。
+- 待：冻结干净 commit → 重建 exe → 用 ConPTY 80×30/120×30 重新验收后再冻结 UI。

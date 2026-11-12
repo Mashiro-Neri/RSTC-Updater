@@ -1,24 +1,22 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace RstcUpdater
 {
     /// <summary>
-    /// v5 终端视觉（HUD/复古终端风）：红石红满宽标题条、3D 像素 RST、双线规则线、
-    /// 反白方向键菜单、分段状态栏。
+    /// v5 终端视觉（纯 Spectre 渲染）：红石红重型边框标题面板、状态表、方向键菜单。
+    /// 不手写光标/背景色，避免控制台渲染错位。
     /// </summary>
     internal static class Ui
     {
         public const string Accent = "red";
-        public const string dim = "grey";
-        public const string Dim = dim;
+        public const string Dim = "grey";
 
         private const int LogoRows = 5;
 
-        // RST 像素字：每个字母 8 列 × 5 行，字母间 1 空格
         private static readonly string[][] Letters =
         {
             new[]
@@ -60,175 +58,60 @@ namespace RstcUpdater
             return rows.ToArray();
         }
 
-        public static int ContentWidth()
+        /// <summary>标题面板：重型红框 + 居中 RST 像素字 + 名称与版本。</summary>
+        public static void LogoPanel()
         {
-            return Math.Min(70, Math.Max(30, SafeWidth() - 2));
-        }
-
-        public static int SafeHeight()
-        {
-            try
-            {
-                int consoleHeight = Console.WindowHeight;
-                return consoleHeight > 10 ? consoleHeight : 30;
-            }
-            catch (Exception)
-            {
-                return 30;
-            }
-        }
-
-        /// <summary>HUD 标题区：满宽红条 + 3D 像素 RST + 标题行 + 双线规则线。</summary>
-        public static void LogoBox(bool animate = false)
-        {
-            int width = ContentWidth();
-            if (SafeHeight() < 24)
-            {
-                string v = "v" + SelfUpdater.CurrentVersion;
-                string ch = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
-                string l = " RSTC // UPDATER";
-                string r = v + "  ·  " + ch + " ";
-                int g = Math.Max(1, width - DisplayWidth(l) - DisplayWidth(r));
-                AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(l) + new string(' ', g) + Markup.Escape(r) + "[/]");
-                AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
-                return;
-            }
-
             string version = "v" + SelfUpdater.CurrentVersion;
             string channel = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
-            string left = " RSTC // UPDATER";
-            string right = version + "  ·  " + channel + " ";
 
-            int gap = Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right));
-            AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(left) + new string(' ', gap) + Markup.Escape(right) + "[/]");
-
-            int logoWidth = LogoLines.Max(l => l.Length);
-            int pad = Math.Max(0, (width - logoWidth) / 2);
-            for (int row = 0; row < LogoLines.Length; row++)
+            var content = new List<IRenderable>();
+            foreach (string line in LogoLines)
             {
-                string color = row < 3 ? Accent : "maroon";
-                AnsiConsole.MarkupLine(new string(' ', pad) + "[" + color + "]" + Markup.Escape(LogoLines[row]) + "[/]");
-                if (animate)
-                {
-                    Thread.Sleep(16);
-                }
+                content.Add(new Markup("[red]" + Markup.Escape(line) + "[/]"));
             }
 
-            string title = "红石镇客户端更新器";
-            string subtitle = "Minecraft 26.3 · Fabric 0.20.1";
-            string plainTitleLine = title + "   »   " + subtitle;
-            if (DisplayWidth(plainTitleLine) <= width)
-            {
-                int titlePad = Math.Max(0, (width - DisplayWidth(plainTitleLine)) / 2);
-                AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]" +
-                                       "   [" + Accent + "]»[/]   " + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
-            }
-            else
-            {
-                int titlePad = Math.Max(0, (width - DisplayWidth(title)) / 2);
-                AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]");
-                int subPad = Math.Max(0, (width - DisplayWidth(subtitle)) / 2);
-                AnsiConsole.MarkupLine(new string(' ', subPad) + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
-            }
-            if (animate)
-            {
-                SweepRule(width);
-            }
-            else
-            {
-                AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
-            }
+            content.Add(new Markup(" "));
+            content.Add(new Markup("[bold white]红石镇客户端更新器[/]"));
+            content.Add(new Markup("[grey]Minecraft 26.3 · Fabric 0.20.1[/]"));
 
+            var body = new Rows(content.ToArray());
+            var panel = new Panel(new Align(body, HorizontalAlignment.Center))
+            {
+                Border = BoxBorder.Heavy,
+                BorderStyle = new Style(foreground: Color.Red),
+                Header = new PanelHeader(" RSTC // UPDATER  ·  " + version + "  ·  " + channel + " ",
+                    Justify.Left),
+                Padding = new Padding(2, 0, 2, 0)
+            };
+            AnsiConsole.Write(panel);
             AnsiConsole.WriteLine();
         }
 
-        /// <summary>3D 像素字：前层亮红，右/下加暗红斜面。</summary>
-        private static string[] BuildBevelLogo()
+        /// <summary>状态表（圆角红框）；compact 时隐藏表头以压缩高度。</summary>
+        public static void StatusTable(IEnumerable<(string Label, string ValueMarkup)> rows, bool compact)
         {
-            int width = LogoLines.Max(l => l.Length) + 1;
-            var result = new List<string>();
-            for (int row = 0; row <= LogoRows; row++)
+            var table = new Table();
+            table.Border = TableBorder.Rounded;
+            table.BorderStyle = new Style(foreground: Color.Red);
+            if (!compact)
             {
-                string current = row < LogoRows ? LogoLines[row] : new string(' ', width);
-                string above = row > 0 ? LogoLines[row - 1] : new string(' ', width);
-                var markup = new System.Text.StringBuilder();
-                string color = null;
-                for (int col = 0; col < width; col++)
-                {
-                    bool front = col < current.Length && current[col] == '█';
-                    bool rightEdge = !front && col > 0 && col - 1 < current.Length && current[col - 1] == '█';
-                    bool bottomEdge = !front && !rightEdge && row > 0 && col < above.Length && above[col] == '█';
-                    string want = front ? "red" : (rightEdge || bottomEdge ? "maroon" : null);
-                    if (want != color)
-                    {
-                        if (color != null)
-                        {
-                            markup.Append("[/]");
-                        }
-
-                        if (want != null)
-                        {
-                            markup.Append("[" + want + "]");
-                        }
-
-                        color = want;
-                    }
-
-                    markup.Append(want == null ? ' ' : (front ? '█' : '▓'));
-                }
-
-                if (color != null)
-                {
-                    markup.Append("[/]");
-                }
-
-                result.Add(markup.ToString());
+                table.Title = new TableTitle("[red]状态[/]");
             }
 
-            return result.ToArray();
-        }
+            table.ShowHeaders = !compact;
+            table.AddColumn(new TableColumn("[grey]项目[/]").NoWrap());
+            table.AddColumn(new TableColumn("[grey]值[/]"));
+            foreach (var row in rows)
+            {
+                table.AddRow(Markup.Escape(row.Label), row.ValueMarkup);
+            }
 
-        private static int PlainWidth(string markup)
-        {
-            string plain = System.Text.RegularExpressions.Regex.Replace(markup, @"\[[^\]]*\]", "");
-            return DisplayWidth(plain);
+            AnsiConsole.Write(table);
         }
 
         public static void Section(string title)
         {
-            int width = Math.Max(40, SafeWidth() - 2);
-            string head = "▌ ▌ " + title + " ";
-            int rest = Math.Max(0, width - DisplayWidth(head) - 1);
-            AnsiConsole.MarkupLine("[" + Accent + "]▌[/] [white on red] " + Markup.Escape(title) + " [/]" +
-                                   "[" + dim + "]" + new string('─', rest) + "[/]");
-        }
-
-        /// <summary>扫描线动画（boot 时使用，约 250ms）。</summary>
-        public static void SweepRule(int width)
-        {
-            for (int step = 4; step < width; step += 5)
-            {
-                try
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.Write(new string('═', step) + new string(' ', width - step));
-                    Console.SetCursorPosition(0, Console.CursorTop);
-                }
-                catch (Exception)
-                {
-                    break;
-                }
-
-                Thread.Sleep(8);
-            }
-
-            AnsiConsole.MarkupLine("[" + Accent + "]" + new string('═', width) + "[/]");
-        }
-
-        /// <summary>HUD 状态行：给定标签与值，渲染一整行。</summary>
-        public static void StatusLine(string label, string valueMarkup)
-        {
-            AnsiConsole.MarkupLine("  [white on red] " + Markup.Escape(PadDisplay(label, 5)) + " [/] " + valueMarkup);
+            AnsiConsole.MarkupLine("[red]▌ " + Markup.Escape(title) + "[/]");
         }
 
         public static void Rows(IEnumerable<(string Label, string ValueMarkup)> rows, int labelWidth = 14)
@@ -236,89 +119,28 @@ namespace RstcUpdater
             foreach (var row in rows)
             {
                 string label = PadDisplay(row.Label, labelWidth);
-                AnsiConsole.MarkupLine("  [white on red] " + Markup.Escape(label) + " [/] " + row.ValueMarkup);
+                AnsiConsole.MarkupLine("  [" + Dim + "]" + Markup.Escape(label) + "[/] " + row.ValueMarkup);
             }
         }
 
-        /// <summary>全宽反白方向键菜单：选中行带说明。返回选中下标。</summary>
+        /// <summary>方向键菜单（内部用 Spectre SelectionPrompt，渲染稳定）。返回选中下标。</summary>
         public static int ArrowMenu(IReadOnlyList<string> items, IReadOnlyList<string> descriptions = null)
         {
-            int selected = 0;
-            int startTop = Math.Max(0, Console.CursorTop);
-            int width = ContentWidth();
-
-            void Render()
+            var prompt = new SelectionPrompt<string>()
+                .Title("[grey]↑ ↓ 移动    Enter 确认[/]")
+                .PageSize(9)
+                .HighlightStyle(new Style(foreground: Color.White, background: Color.Maroon))
+                .AddChoices(items);
+            string picked = AnsiConsole.Prompt(prompt);
+            for (int i = 0; i < items.Count; i++)
             {
-                for (int i = 0; i < items.Count; i++)
+                if (items[i] == picked)
                 {
-                    TrySetCursor(0, startTop + i);
-                    Console.Write(new string(' ', Math.Min(SafeWidth() - 1, 72)));
-                    TrySetCursor(0, startTop + i);
-                    if (i == selected)
-                    {
-                        Console.BackgroundColor = ConsoleColor.DarkRed;
-                        Console.ForegroundColor = ConsoleColor.White;
-                        string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
-                        string line = "  ▶ " + PadDisplay(items[i], 14) + "  " + desc;
-                        int pad = Math.Max(0, width - DisplayWidth(line));
-                        Console.Write(line + new string(' ', pad));
-                        Console.ResetColor();
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.DarkGray;
-                        Console.Write("    " + items[i]);
-                        Console.ResetColor();
-                    }
+                    return i;
                 }
-
-                TrySetCursor(0, startTop + items.Count);
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.Write("  ↑ ↓ 移动    Enter 确认");
-                Console.ResetColor();
             }
 
-            Render();
-            while (true)
-            {
-                ConsoleKeyInfo key;
-                try
-                {
-                    key = Console.ReadKey(true);
-                }
-                catch (InvalidOperationException)
-                {
-                    Console.WriteLine();
-                    return selected;
-                }
-
-                if (key.Key == ConsoleKey.UpArrow)
-                {
-                    selected = (selected - 1 + items.Count) % items.Count;
-                    Render();
-                }
-                else if (key.Key == ConsoleKey.DownArrow)
-                {
-                    selected = (selected + 1) % items.Count;
-                    Render();
-                }
-                else if (key.Key == ConsoleKey.Enter)
-                {
-                    TrySetCursor(0, startTop + items.Count + 1);
-                    return selected;
-                }
-            }
-        }
-
-        private static void TrySetCursor(int left, int top)
-        {
-            try
-            {
-                Console.SetCursorPosition(left, Math.Max(0, top));
-            }
-            catch (Exception)
-            {
-            }
+            return 0;
         }
 
         public static string PadDisplay(string text, int width)
@@ -365,7 +187,6 @@ namespace RstcUpdater
             }
         }
 
-        /// <summary>按显示宽度截断文本（超出加 ...），用于游戏目录等长路径。</summary>
         public static string Fit(string text, int maxWidth)
         {
             if (string.IsNullOrEmpty(text) || maxWidth <= 0)

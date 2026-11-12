@@ -65,10 +65,9 @@ namespace RstcUpdater
             HandleUnfinishedJournals(gameDir);
 
             bool interactive = !ScriptMode && !Console.IsOutputRedirected;
-            bool firstRender = true;
             if (!interactive)
             {
-                Ui.LogoBox();
+                Ui.LogoPanel();
             }
 
             while (true)
@@ -76,8 +75,7 @@ namespace RstcUpdater
                 if (interactive)
                 {
                     AnsiConsole.Clear();
-                    Ui.LogoBox(firstRender);
-                    firstRender = false;
+                    Ui.LogoPanel();
                 }
 
                 RenderStatus(gameDir, config, interactive);
@@ -101,18 +99,7 @@ namespace RstcUpdater
                 }
                 else
                 {
-                    var descriptions = new[]
-                    {
-                        "新装 26.3 + 整合包",
-                        "下载最新包并应用",
-                        "复制旧实例玩家数据",
-                        "检查实例完整性",
-                        "回滚中断的更新",
-                        "检查更新器自身更新",
-                        "修改游戏目录 / 实例",
-                        "退出程序"
-                    };
-                    choice = menuChoices[Ui.ArrowMenu(menuChoices, descriptions)];
+                    choice = menuChoices[Ui.ArrowMenu(menuChoices)];
                 }
                 try
                 {
@@ -189,7 +176,7 @@ namespace RstcUpdater
                 }
             }
 
-            Ui.LogoBox();
+            Ui.LogoPanel();
             RenderStatus(resolved, config);
             CheckKeyFiles(resolved);
             return 0;        }
@@ -229,8 +216,6 @@ namespace RstcUpdater
 
         private static void RenderStatus(string gameDir, AppConfig config, bool compact = false)
         {
-            Ui.Section("状态");
-
             string instance = FindCurrentInstance(gameDir, config);
             var allInstances = FindInstances(gameDir);
             string instanceText = string.IsNullOrEmpty(instance) ? "[yellow]未安装[/]" : Markup.Escape(instance);
@@ -351,24 +336,22 @@ namespace RstcUpdater
             string javaChip = (javaText.Contains("就绪") ? "[green]●[/]" : "[yellow]●[/]") + " " + javaText;
             string isoChip = (isolation.Contains("已启用隔离") && !isolation.Contains("未启用隔离") ? "[green]●[/]" : "[yellow]●[/]") + " " + isolation;
 
-            string isoShort = isolation.Contains("已启用隔离")
-                ? (isolation.Contains("PCL2") && isolation.Contains("HMCL") ? "PCL2 + HMCL" : (isolation.Contains("PCL2") ? "PCL2" : "HMCL"))
-                : "未检测到";
-            string javaShort = javaText.Contains("就绪") ? ("Java " + RequiredJava + " ✓") : ("Java 需要 " + RequiredJava);
-
             if (compact)
             {
                 string pathText = string.IsNullOrEmpty(gameDir)
                     ? "[yellow]未定位[/]"
-                    : Markup.Escape(Ui.Fit(gameDir, Math.Max(18, Ui.ContentWidth() - 10)));
-                Ui.StatusLine("PATH", pathText);
-                string sep = "  [" + Ui.Dim + "]│[/]  ";
-                Ui.StatusLine("ENV", instanceChip + sep + "[" + Ui.Dim + "]整合包[/] " + packChip);
-                Ui.StatusLine("NET", remoteChip + sep + "[" + Ui.Dim + "]Java[/] " + javaShort + sep + "[" + Ui.Dim + "]隔离[/] " + isoShort);
+                    : Markup.Escape(Ui.Fit(gameDir, Math.Max(18, Ui.SafeWidth() - 12)));
+                Ui.StatusTable(new[]
+                {
+                    ("游戏目录", pathText),
+                    ("实例", instanceChip),
+                    ("整合包", packChip + "  " + remoteChip),
+                    ("环境", javaChip + "  " + isoChip)
+                }, true);
                 return;
             }
 
-            Ui.Rows(new[]
+            Ui.StatusTable(new[]
             {
                 ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Math.Max(30, Ui.SafeWidth() - 20)))),
                 ("当前实例", instanceChip),
@@ -376,7 +359,7 @@ namespace RstcUpdater
                 ("远端", remoteChip),
                 ("Java", javaChip),
                 ("启动器隔离", isoChip)
-            });
+            }, false);
         }
 
         private static void CheckKeyFiles(string gameDir)
