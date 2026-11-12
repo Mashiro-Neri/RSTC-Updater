@@ -283,6 +283,11 @@ namespace RstcUpdater
             AnsiConsole.MarkupLine("[grey]  目标: [/]" + Markup.Escape(gameDir));
             AnsiConsole.MarkupLine("[grey]  来源: 自动镜像（BMCLAPI）优先，失败回退 Mojang 官方；下载方式里可设置代理[/]");
             AnsiConsole.MarkupLine("[grey]  说明: 不下载 Java 运行时（只检测），仅安装游戏本体/库/资源。[/]");
+            if (MultiProgress.Requested)
+            {
+                MultiProgress.Requested = false;
+                MultiProgress.Begin();
+            }
 
             var stopwatch = Stopwatch.StartNew();
             long beforeBytes = GetDirectorySize(gameDir);
@@ -320,8 +325,15 @@ namespace RstcUpdater
                     while (System.Threading.Volatile.Read(ref anyProgress) == 0 &&
                            wait.Elapsed < TimeSpan.FromSeconds(120))
                     {
-                        Console.Out.Write("\r  正在连接下载服务器…已等待 " + (int)wait.Elapsed.TotalSeconds + "s   ");
-                        Console.Out.Flush();
+                        if (MultiProgress.Active)
+                        {
+                            MultiProgress.SetVanillaWaiting((int)wait.Elapsed.TotalSeconds);
+                        }
+                        else
+                        {
+                            Console.Out.Write("\r  正在连接下载服务器…已等待 " + (int)wait.Elapsed.TotalSeconds + "s   ");
+                            Console.Out.Flush();
+                        }
                         Thread.Sleep(1000);
                     }
                 })
@@ -384,17 +396,24 @@ namespace RstcUpdater
                 }
             }
 
-            ProgressLine.Clear();
             stopwatch.Stop();
             long afterBytes = GetDirectorySize(gameDir);
             double averageSpeed = stopwatch.Elapsed.TotalSeconds > 0
                 ? (afterBytes - beforeBytes) / 1048576.0 / stopwatch.Elapsed.TotalSeconds
                 : 0;
-            AnsiConsole.MarkupLine("");
-            AnsiConsole.MarkupLine("[green]原版下载完成[/] 耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
-                                   "，平均 " + averageSpeed.ToString("F1") + " MiB/s，本次新增 " +
-                                   ((afterBytes - beforeBytes) / 1048576.0).ToString("F1") +
-                                   " MiB（目录总量 " + (afterBytes / 1048576.0).ToString("F1") + " MiB）");
+            string summary = "原版下载完成  耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
+                             "  平均 " + averageSpeed.ToString("F1") + " MiB/s  新增 " +
+                             ((afterBytes - beforeBytes) / 1048576.0).ToString("F1") + " MiB";
+            if (MultiProgress.Active)
+            {
+                MultiProgress.SetVanillaFinished(summary);
+            }
+            else
+            {
+                ProgressLine.Clear();
+                AnsiConsole.MarkupLine("");
+                AnsiConsole.MarkupLine("[green]" + Markup.Escape(summary) + "[/]");
+            }
 
             return VerifyInstall(gameDir);
         }
@@ -447,6 +466,12 @@ namespace RstcUpdater
         private static void RenderInstallProgress(int files, int totalFiles, long bytes, long totalBytes, TimeSpan elapsed)
         {
             double speed = elapsed.TotalSeconds > 0 ? bytes / 1048576.0 / elapsed.TotalSeconds : 0;
+            if (MultiProgress.Active)
+            {
+                MultiProgress.UpdateVanilla(bytes, totalBytes, speed);
+                return;
+            }
+
             string extra = files > 0 && totalFiles > 0 ? "文件 " + files + "/" + totalFiles : null;
             ProgressLine.Draw("下载原版", bytes, totalBytes, speed, extra);
         }

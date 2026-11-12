@@ -65,6 +65,7 @@ namespace RstcUpdater
 
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
             Ui.Phase("下载原版 Minecraft " + Provisioner.TargetVersion);
+            MultiProgress.Requested = packTask != null;
             if (IsVanillaComplete(gameDir))
             {
                 AnsiConsole.MarkupLine("[grey]26.3 原版已完整，跳过下载[/]");
@@ -99,6 +100,13 @@ namespace RstcUpdater
             // 2) 整合包：在线时已在后台并行下载，这里等待/校验；本地 zip 直接读元数据
             if (packTask != null)
             {
+                if (!MultiProgress.Active)
+                {
+                    MultiProgress.Requested = false;
+                    MultiProgress.Begin();
+                    MultiProgress.SetVanillaFinished("原版已就绪，跳过下载");
+                }
+
                 try
                 {
                     await AwaitPackDownloadAsync(packTask).ConfigureAwait(false);
@@ -107,10 +115,12 @@ namespace RstcUpdater
                 catch (Exception ex)
                 {
                     PackFetcher.SuppressProgress = false;
+                    MultiProgress.Abort();
                     Console.Error.WriteLine("整合包后台下载失败: " + ex.GetType().Name + ": " + ex.Message);
                     return 5;
                 }
 
+                MultiProgress.End();
                 downloaded = true;
                 assetName = packAsset.Name;
                 tag = packAsset.Tag;
@@ -210,6 +220,7 @@ namespace RstcUpdater
                 }
             }
 
+            Provisioner.CleanupUnusedFabricProfile(gameDir);
             PrintCompletion(gameDir, instanceName, tag, assetName);
             return 0;
         }
@@ -246,8 +257,12 @@ namespace RstcUpdater
         {
             while (!task.IsCompleted)
             {
-                ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
-                    PackFetcher.LastSpeed, "并行下载中");
+                if (!MultiProgress.Active)
+                {
+                    ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
+                        PackFetcher.LastSpeed, "并行下载中");
+                }
+
                 await Task.Delay(400).ConfigureAwait(false);
             }
 
@@ -273,7 +288,7 @@ namespace RstcUpdater
             });
             AnsiConsole.MarkupLine("[grey]  启动方式：在 PCL2 / HMCL 里把游戏目录指向 [/]" + Markup.Escape(gameDir));
             AnsiConsole.MarkupLine("[grey]            选择实例 [/]" + Markup.Escape(instanceName) + "[grey] 启动；若启动器未开启版本隔离，需手动开启。[/]");
-            AnsiConsole.MarkupLine("[grey]  提示：版本列表里还会出现 26.3 与 " + Provisioner.FabricVersionId + "，请选上面的实例。[/]");
+            AnsiConsole.MarkupLine("[grey]  提示：启动器版本列表里请选择「" + Markup.Escape(instanceName) + "」；纯原版 26.3 条目是游戏本身，不要选错。[/]");
         }
     }
 }

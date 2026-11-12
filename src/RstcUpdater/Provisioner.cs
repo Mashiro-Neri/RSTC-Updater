@@ -579,6 +579,52 @@ namespace RstcUpdater
             lines.Add(prefix + value);
         }
 
+        /// <summary>
+        /// 删除仅用于生成实例的 Fabric 版本配置目录（避免启动器版本列表多出 fabric-loader-* 项）。
+        /// 若还有其它实例 inheritsFrom 这个 Fabric 版本，则保留。
+        /// </summary>
+        public static void CleanupUnusedFabricProfile(string gameDir)
+        {
+            try
+            {
+                string profileDir = Path.Combine(gameDir, "versions", FabricVersionId);
+                if (!Directory.Exists(profileDir))
+                {
+                    return;
+                }
+
+                var matcher = new System.Text.RegularExpressions.Regex(
+                    "\"inheritsFrom\"\\s*:\\s*\"" + System.Text.RegularExpressions.Regex.Escape(FabricVersionId) + "\"",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (string instDir in Directory.GetDirectories(Path.Combine(gameDir, "versions")))
+                {
+                    if (string.Equals(instDir, profileDir, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foreach (string json in Directory.EnumerateFiles(instDir, "*.json"))
+                    {
+                        try
+                        {
+                            if (matcher.IsMatch(File.ReadAllText(json)))
+                            {
+                                return;
+                            }
+                        }
+                        catch (IOException)
+                        {
+                        }
+                    }
+                }
+
+                Directory.Delete(profileDir, true);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         internal sealed class ProvisionOptions
         {
             public string GameDir;

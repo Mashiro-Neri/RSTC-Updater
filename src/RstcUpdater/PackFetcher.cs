@@ -220,7 +220,13 @@ namespace RstcUpdater
             double seconds = sw.Elapsed.TotalSeconds;
             double speed = seconds > 0 && asset.Size > 0 ? asset.Size / 1048576.0 / seconds : 0;
             long freeAfter = GetFreeSpace(gameDir);
-            if (!SuppressProgress)
+            string summary = "整合包下载完成  用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") + "  " +
+                             speed.ToString("F1") + " MiB/s  剩余空间 " + (freeAfter / 1073741824.0).ToString("F1") + " GiB";
+            if (MultiProgress.Active)
+            {
+                MultiProgress.SetPackFinished(summary);
+            }
+            else if (!SuppressProgress)
             {
                 AnsiConsole.MarkupLine("[green]校验[/] sha256 一致；用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") +
                                        "，" + speed.ToString("F1") + " MiB/s；剩余空间 " +
@@ -463,6 +469,12 @@ namespace RstcUpdater
             LastBytes = done;
             LastTotal = total;
             LastSpeed = speed;
+            if (MultiProgress.Active)
+            {
+                MultiProgress.UpdatePack(done, total, speed);
+                return;
+            }
+
             if (!SuppressProgress)
             {
                 ProgressLine.Draw("下载整合包", done, total, speed, source);
