@@ -67,3 +67,10 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 修复：安装时预写 PCL `Setup.ini`（`State:9` 等），并在安装/更新后把语言码规范小写。
 - 用户实测：重装 RSTC-6.0-TEST 后启动为中文（120 mods 正常）。
 - 该改动已由第 6 轮复审 PASS（`evidence/v1/review/20261112_2100/`）。
+
+## 10. 内测通道 + Beta 在线验收（2026-11-12，待复审）
+
+- 新增 `RSTC_RELEASE_CHANNEL=beta`（`ReleaseClient.GetLatestBetaAsync` 取 releases 列表里 tag 最新含 Pre-release；默认仍 `/releases/latest`）。
+- 菜单状态新增「通道」行与「（Pre-release）」标记。
+- 真实在线：空目录安装 6.0 Beta 成功（120 mods / sha256 一致 / PACK_APPLY=PASS），update 报已最新。
+- 证据 `evidence/v1/online-beta-20261112_210729/`；需一轮快速复审（对 62bde99 之后 diff）。

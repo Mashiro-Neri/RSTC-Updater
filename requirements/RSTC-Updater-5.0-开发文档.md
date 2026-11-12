@@ -686,7 +686,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **PCL2 语言 quirk（2026-11-12 修复）**：PCL2 对"首次启动"的版本会改写游戏语言，但对 26.3 这类版本会写成大写 zh_CN；26.3 只认小写 zh_cn，导致首次启动英文。修复：① 安装时预写 PCL 完整 Setup.ini（State:9、VersionVanilla:26.3.0、Info:正式版 26.3, Fabric 0.20.1 等），PCL2 不再走首次启动改写；② 安装/更新后把 options.txt 语言码规范为小写兜底。用户实测：重装后启动为中文（vidence/acceptance/20261112_6.0-test/）。
 
-**内测通道（2026-11-12）**：`RSTC_RELEASE_CHANNEL=beta` 时 `ReleaseClient` 取 releases 列表中 tag 最新（含 Pre-release）；默认只走 `/releases/latest` 正式版。6.0 当前为 Pre-release（tag `v20261112-205846`，资产 `RSTC-6.0.zip`），默认通道仍看到 5.5。`r`n`r`n**发布侧校验（新增）**：`scripts/release/validate-pack.ps1` 对整合包/更新器 zip 做发布前门禁（根 `modrinth.index.json`、`versionId`、`dependencies.minecraft`、`overrides/`、**不得含 `PCL/`**、mods 数量、更新器含 `RstcUpdater.exe`）。实测：26.3 夹具包 PASS；真实 5.5 包因含 `PCL/`（4 项）且 MC=1.21.10 被正确判 FAIL。发布流程见 `docs/发布检查清单.md`。
+**真实 Beta 在线验收（2026-11-12）**：6.0 以 Pre-release（tag `v20261112-205846`）发布后，用 `RSTC_RELEASE_CHANNEL=beta` 从空目录真实在线安装成功——26.3 1:32/588.9 MiB、`RSTC-6.0.zip` 324.2 MiB sha256 一致、`PACK_APPLY=PASS`、120 mods、`lang:zh_cn`、`State:9`；`--update-v1` 报「已是最新（本地 6.0 / 远端 6.0）」。默认通道仍看到 5.5。证据 `evidence/v1/online-beta-20261112_210729/`。`r`n`r`n**内测通道（2026-11-12）**：`RSTC_RELEASE_CHANNEL=beta` 时 `ReleaseClient` 取 releases 列表中 tag 最新（含 Pre-release）；默认只走 `/releases/latest` 正式版。6.0 当前为 Pre-release（tag `v20261112-205846`，资产 `RSTC-6.0.zip`），默认通道仍看到 5.5。`r`n`r`n**发布侧校验（新增）**：`scripts/release/validate-pack.ps1` 对整合包/更新器 zip 做发布前门禁（根 `modrinth.index.json`、`versionId`、`dependencies.minecraft`、`overrides/`、**不得含 `PCL/`**、mods 数量、更新器含 `RstcUpdater.exe`）。实测：26.3 夹具包 PASS；真实 5.5 包因含 `PCL/`（4 项）且 MC=1.21.10 被正确判 FAIL。发布流程见 `docs/发布检查清单.md`。
 
 ---
 
