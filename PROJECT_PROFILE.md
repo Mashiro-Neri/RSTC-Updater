@@ -18,7 +18,8 @@
 | test | `pwsh -File scripts/v1/smoke.ps1 -GameDir <有 26.3 的临时目录>` | 2026-11-12 **30/30 PASS**（安装/更新/迁移/自更新检查/状态） |
 | test-menu | `pwsh -File scripts/v1/menu-smoke.ps1 -GameDir <同上>` | 2026-11-12 **12/12 PASS**（`--menu-script` 驱动真实菜单：安装/检查/迁移/自更新/退出 + 缺/空/耗尽脚本 exit 2） |
 | smoke | `RstcUpdater.exe --status [游戏目录]` | 2026-11-12 非交互状态面板 exit 0 |
-| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB |`r`n| a1b | PCL2/HMCL 启动 `RSTC-0-2-A2/A1/B` | 2026-11-12 用户实测 **6/6 全部启动**（7 mods 加载，无异常），证据 `evidence/acceptance/20261112_193644/a1b/` |
+| install-test | `RstcUpdater.exe --install <空目录> [--reuse]` | 2026-11-11 L2 通过：cold 2:20/588.9 MiB，warm 3.6 s/0 MiB |
+| a1b | PCL2/HMCL 启动 `RSTC-0-2-A2/A1/B` | 2026-11-12 用户实测 **6/6 全部启动**（7 mods 加载，无异常），证据 `evidence/acceptance/20261112_193644/a1b/` |
 | v1-install | `RstcUpdater.exe --install-v1 <游戏目录> [--instance <名>] [--zip <本地包>]` | 2026-11-12 夹具包成功；Release 路径在 6.0 前正确拦截 5.5（exit 5，不建实例） |
 | v1-update | `RstcUpdater.exe --update-v1 <游戏目录> --instance <名> [--zip <本地包>] [--dry-run]` | 2026-11-12 计划预览/实际更新/越界 zip exit 7 均通过 |
 | v1-migrate | `RstcUpdater.exe --migrate-v1 <游戏目录> --from <源> --to <目标> [--categories ...] [--overwrite]` | 2026-11-12 默认拒绝覆盖/覆盖前备份/失败回滚通过 |

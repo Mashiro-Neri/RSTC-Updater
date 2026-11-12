@@ -123,14 +123,64 @@ namespace RstcUpdater
                 return check;
             }
 
-            check.UpdateAvailable = check.RemoteVersion != null &&
-                                    !string.Equals(versionId, check.RemoteVersion, StringComparison.OrdinalIgnoreCase);
+            int versionCompare = CompareVersions(check.RemoteVersion, versionId);
+            check.UpdateAvailable = check.RemoteVersion != null && versionCompare > 0;
             if (!check.UpdateAvailable)
             {
-                check.Message = "已是最新版本";
+                check.Message = versionCompare == 0
+                    ? "已是最新版本"
+                    : "远端版本（" + (check.RemoteVersion ?? "?") + "）不高于本地（" + (versionId ?? "?") +
+                      "），无需更新（Beta 安装的实例在默认通道可能更低）";
             }
 
             return check;
+        }
+
+        /// <summary>版本比较：优先按版本号（5.5 &lt; 6.0，v4.9 &lt; v4.11），无法区分时退回字符串比较。</summary>
+        private static int CompareVersions(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) && string.IsNullOrEmpty(b))
+            {
+                return 0;
+            }
+
+            if (string.IsNullOrEmpty(a))
+            {
+                return -1;
+            }
+
+            if (string.IsNullOrEmpty(b))
+            {
+                return 1;
+            }
+
+            try
+            {
+                int byVersion = SelfUpdater.ParseTag(a).CompareTo(SelfUpdater.ParseTag(b));
+                if (byVersion != 0)
+                {
+                    return byVersion;
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void DeleteFileQuiet(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>下载 + 计划预览；失败抛 FlowFailureException（带退出码）。</summary>
@@ -198,11 +248,15 @@ namespace RstcUpdater
                 prepared.RemoteTag = release.Tag;
                 ReleaseAsset asset = ReleaseClient.FindPackAsset(release);
                 prepared.RemoteVersion = ReleaseClient.VersionFromAssetName(asset?.Name);
-                if (!options.Force && string.Equals(versionId, prepared.RemoteVersion, StringComparison.OrdinalIgnoreCase))
+                int remoteCompare = CompareVersions(prepared.RemoteVersion, versionId);
+                if (!options.Force && remoteCompare <= 0)
                 {
                     prepared.UpToDate = true;
-                    AnsiConsole.MarkupLine("[green]已是最新版本[/]（本地 " + Markup.Escape(versionId ?? "?") +
-                                           " / 远端 " + Markup.Escape(prepared.RemoteVersion ?? "?") + "）");
+                    AnsiConsole.MarkupLine(remoteCompare == 0
+                        ? "[green]已是最新版本[/]（本地 " + Markup.Escape(versionId ?? "?") +
+                          " / 远端 " + Markup.Escape(prepared.RemoteVersion ?? "?") + "）"
+                        : "[green]本地版本更高[/]（本地 " + Markup.Escape(versionId ?? "?") +
+                          " / 远端 " + Markup.Escape(prepared.RemoteVersion ?? "?") + "），无需更新");
                     return prepared;
                 }
 
@@ -221,33 +275,44 @@ namespace RstcUpdater
                 prepared.RemoteTag = assetRef.Tag;
             }
 
-            var meta = PackApplier.ReadMetadata(prepared.ZipPath);
-            if (meta == null)
+            try
             {
-                throw new FlowFailureException(5, "包缺少 modrinth.index.json");
-            }
+                var meta = PackApplier.ReadMetadata(prepared.ZipPath);
+                if (meta == null)
+                {
+                    throw new FlowFailureException(5, "包缺少 modrinth.index.json");
+                }
 
-            if (prepared.RemoteVersion == null)
-            {
-                prepared.RemoteVersion = meta.VersionId;
-            }
+                if (prepared.RemoteVersion == null)
+                {
+                    prepared.RemoteVersion = meta.VersionId;
+                }
 
-            if (string.IsNullOrEmpty(prepared.RemoteTag))
-            {
-                prepared.RemoteTag = "local-" + (meta.VersionId ?? "test");
-            }
+                if (string.IsNullOrEmpty(prepared.RemoteTag))
+                {
+                    prepared.RemoteTag = "local-" + (meta.VersionId ?? "test");
+                }
 
-            if (!string.Equals(meta.Minecraft, Provisioner.TargetVersion, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new FlowFailureException(5, "该包基于 Minecraft " + meta.Minecraft + "，与 V1 目标 " + Provisioner.TargetVersion + " 不符");
-            }
+                if (!string.Equals(meta.Minecraft, Provisioner.TargetVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new FlowFailureException(5, "该包基于 Minecraft " + meta.Minecraft + "，与 V1 目标 " + Provisioner.TargetVersion + " 不符");
+                }
 
-            if (!options.Force && !string.IsNullOrEmpty(prepared.RemoteVersion) &&
-                string.Equals(versionId, prepared.RemoteVersion, StringComparison.OrdinalIgnoreCase))
+                if (!options.Force && CompareVersions(prepared.RemoteVersion, versionId) <= 0)
+                {
+                    prepared.UpToDate = true;
+                    AnsiConsole.MarkupLine("[green]已是最新版本[/]（版本 " + Markup.Escape(versionId ?? "?") + "）");
+                    return prepared;
+                }
+            }
+            catch (Exception)
             {
-                prepared.UpToDate = true;
-                AnsiConsole.MarkupLine("[green]已是最新版本[/]（版本 " + Markup.Escape(versionId ?? "?") + "）");
-                return prepared;
+                if (prepared.Downloaded)
+                {
+                    DeleteFileQuiet(prepared.ZipPath);
+                }
+
+                throw;
             }
 
             var packOptions = new PackApplier.PackOptions

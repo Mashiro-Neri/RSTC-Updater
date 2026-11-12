@@ -45,9 +45,33 @@ namespace RstcUpdater
             }
         }
 
-        public static string ChannelName
+        /// <summary>比较 release tag：优先按版本号（v4.9 &lt; v4.11），无法解析时退回字典序。</summary>
+        private static int CompareReleaseTags(string a, string b)
         {
-            get { return BetaChannel ? "beta" : "stable"; }
+            Version va = TryParseTag(a);
+            Version vb = TryParseTag(b);
+            if (va != null && vb != null)
+            {
+                int byVersion = va.CompareTo(vb);
+                if (byVersion != 0)
+                {
+                    return byVersion;
+                }
+            }
+
+            return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Version TryParseTag(string tag)
+        {
+            try
+            {
+                return SelfUpdater.ParseTag(tag);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         public static async Task<ReleaseInfo> GetLatestAsync(string repo)
@@ -113,7 +137,7 @@ namespace RstcUpdater
                                 continue;
                             }
 
-                            if (bestTag == null || string.Compare(tag, bestTag, StringComparison.OrdinalIgnoreCase) > 0)
+                            if (bestTag == null || CompareReleaseTags(tag, bestTag) > 0)
                             {
                                 best = release;
                                 bestTag = tag;
