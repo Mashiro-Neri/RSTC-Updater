@@ -95,3 +95,10 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - R11-2（LOW，test gap）：新增 `scripts/v1/language-smoke.ps1`（新装 clientVersion/saves、删字段强制更新补回+备份、二次幂等）与 `smoke.ps1` 两条断言（实例 json clientVersion=26.3、saves 目录）。
 - NIT（保留）：`--fetch-pack`/`--pack` 两个阶段 0 CLI 未接 Ensure（内部遗留，不影响玩家路径）；`.rstc-bak` 在只读 json 场景可能继承只读属性，需人工清属性后重试；README/交付说明轮次与基线已更正。
 - 冻结：V1 代码基线 `11a4a19`；此后 test/docs-only 变更不改变代码基线。
+
+## 14. UI 改版（ASCII 终端风格，2026-11-12，待复审）
+
+- 新增 `Ui.cs`：ASCII 横幅（宽/窄自适应）、`-- 状态 --` 分段线、对齐的中文状态行、页脚（版本/通道）。
+- 主菜单改为编号菜单（`[1] 安装到新目录 ...` + 输入编号），脚本模式仍走原 SelectPrompt（测试兼容）。
+- `--status` 与「检查关键文件」改用同一套 ASCII 面板；长路径按显示宽度截断（`...`），避免中文宽度错位。
+- 纯 UI 改动，不改任何业务逻辑/退出码；smoke 32/32、menu 12/12、language 12/12 复跑通过。
