@@ -31,7 +31,8 @@ namespace RstcUpdater
             "",
             "https://gh-proxy.com/",
             "https://hk.gh-proxy.com/",
-            "https://gh.llkk.cc/"
+            "https://gh.llkk.cc/",
+            "https://edgeone.gh-proxy.com/"
         };
 
         /// <summary>与 Mirrors 一一对应的显示名。</summary>
@@ -40,11 +41,15 @@ namespace RstcUpdater
             "GitHub 直连",
             "gh-proxy.com",
             "hk.gh-proxy.com",
-            "gh.llkk.cc"
+            "gh.llkk.cc",
+            "edgeone.gh-proxy.com"
         };
 
-        /// <summary>-1 = 自动测速；>=0 = 指定 Mirrors 下标。</summary>
+        /// <summary>-1 = 自动测速；>=0 = 指定 Mirrors 下标；-2 = 使用 CustomMirror。</summary>
         public static int PreferredMirror = -1;
+
+        /// <summary>自定义镜像前缀（例如 https://gh-proxy.com/）。</summary>
+        public static string CustomMirror;
 
         internal sealed class FetchOptions
         {
@@ -326,6 +331,21 @@ namespace RstcUpdater
             {
                 AnsiConsole.MarkupLine("[cyan]下载源[/] " + Markup.Escape(all[PreferredMirror].Value) + "（手动选择）");
                 return new List<KeyValuePair<string, string>> { all[PreferredMirror] };
+            }
+
+            if (PreferredMirror == -2 && !string.IsNullOrWhiteSpace(CustomMirror))
+            {
+                string custom = CustomMirror.Trim();
+                if (!custom.EndsWith("/", StringComparison.Ordinal))
+                {
+                    custom += "/";
+                }
+
+                AnsiConsole.MarkupLine("[cyan]下载源[/] 自定义 " + Markup.Escape(custom));
+                return new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>(custom + url, "自定义镜像")
+                };
             }
 
             var measured = new List<(KeyValuePair<string, string> Candidate, double Speed)>();
