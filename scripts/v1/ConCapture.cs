@@ -218,6 +218,11 @@ internal static class ConCapture
                     Key(0x1B);
                     Thread.Sleep(300);
                 }
+                else if (string.Equals(step, "CTRLC", StringComparison.OrdinalIgnoreCase))
+                {
+                    KeyCtrlC();
+                    Thread.Sleep(600);
+                }
                 else if (string.Equals(step, "WAIT", StringComparison.OrdinalIgnoreCase))
                 {
                     Thread.Sleep(900);
@@ -332,6 +337,21 @@ internal static class ConCapture
         records[0].KeyEvent.bKeyDown = 1;
         records[0].KeyEvent.wRepeatCount = 1;
         records[0].KeyEvent.UnicodeChar = ch;
+        records[1] = records[0];
+        records[1].KeyEvent.bKeyDown = 0;
+        uint written;
+        WriteConsoleInput(_in, records, 2, out written);
+    }
+
+    private static void KeyCtrlC()
+    {
+        var records = new INPUT_RECORD[2];
+        records[0].EventType = 1;
+        records[0].KeyEvent.bKeyDown = 1;
+        records[0].KeyEvent.wRepeatCount = 1;
+        records[0].KeyEvent.wVirtualKeyCode = 0x43;
+        records[0].KeyEvent.UnicodeChar = '\x03';
+        records[0].KeyEvent.dwControlKeyState = 0x0008;
         records[1] = records[0];
         records[1].KeyEvent.bKeyDown = 0;
         uint written;

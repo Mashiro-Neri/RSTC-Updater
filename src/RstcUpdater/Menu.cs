@@ -1065,6 +1065,7 @@ namespace RstcUpdater
 
         private static async Task<string> RunInstallAsync(string dir, string name, string localZip, AppConfig config)
         {
+            Ui.Note("开始安装…（下载量较大，可 Ctrl+C 取消；中断后重跑会复用已下载文件）");
             int code = await Installer.InstallFlowAsync(dir, name, localZip).ConfigureAwait(false);
             if (code == 0)
             {

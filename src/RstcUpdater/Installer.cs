@@ -24,8 +24,8 @@ namespace RstcUpdater
                 Directory.CreateDirectory(gameDir);
             }
 
-            Ui.Step(1, 4, "准备游戏目录");
-            AnsiConsole.MarkupLine("  目标: [yellow]" + Markup.Escape(gameDir) + "[/]，实例: [yellow]" + Markup.Escape(instanceName) + "[/]");
+            Ui.Phase("准备游戏目录");
+            AnsiConsole.MarkupLine("[grey]  目标: [/]" + Markup.Escape(gameDir) + "  [grey]实例: [/]" + Markup.Escape(instanceName));
             string instanceDir = Path.Combine(gameDir, "versions", instanceName);
             if (Directory.Exists(instanceDir))
             {
@@ -34,7 +34,7 @@ namespace RstcUpdater
             }
 
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
-            Ui.Step(2, 4, "下载原版 Minecraft " + Provisioner.TargetVersion);
+            Ui.Phase("下载原版 Minecraft " + Provisioner.TargetVersion);
             if (IsVanillaComplete(gameDir))
             {
                 AnsiConsole.MarkupLine("[grey]26.3 原版已完整，跳过下载[/]");
@@ -67,7 +67,7 @@ namespace RstcUpdater
             }
 
             // 2) 先解析并校验整合包（避免"先建实例后才发现 MC 不符"）
-            AnsiConsole.MarkupLine("[cyan]准备整合包（下载后校验 sha256 与 MC 版本）…[/]");
+            Ui.Note("准备整合包（下载后校验 sha256 与 MC 版本）…");
             string tag;
             string assetName;
             string zipPath;
@@ -137,8 +137,8 @@ namespace RstcUpdater
             }
 
             // 3) Fabric profile + 库（网络抖动时重试）
-            Ui.Step(3, 4, "安装 Fabric " + Provisioner.FabricVersionId + " 与实例");
-            AnsiConsole.MarkupLine("[cyan]准备 Fabric " + Provisioner.FabricVersionId + "…[/]");
+            Ui.Phase("安装 Fabric " + Provisioner.FabricVersionId + " 与实例");
+            Ui.Note("准备 Fabric 配置与依赖库…");
             FabricProfile fabric = null;
             for (int attempt = 1; attempt <= 3 && fabric == null; attempt++)
             {
@@ -157,7 +157,7 @@ namespace RstcUpdater
             }
 
             // 4) 实例（默认 A2 自包含平铺）
-            AnsiConsole.MarkupLine("[cyan]创建实例 " + Markup.Escape(instanceName) + "（A2 平铺）…[/]");
+            Ui.Note("创建实例 " + instanceName + "（A2 平铺）…");
             if (!Provisioner.CreateInstance(gameDir, instanceName, "A2", fabric))
             {
                 return 7;
@@ -166,7 +166,7 @@ namespace RstcUpdater
             Provisioner.EnsureLanguageCompatibility(gameDir, instanceName);
 
             // 5) 应用整合包
-            Ui.Step(4, 4, "应用整合包文件");
+            Ui.Phase("应用整合包文件");
             int apply = PackApplier.Run(new PackApplier.PackOptions
             {
                 GameDir = gameDir,

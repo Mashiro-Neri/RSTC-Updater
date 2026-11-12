@@ -280,9 +280,9 @@ namespace RstcUpdater
         /// <summary>供 V1 安装流程复用：确保原版 26.3 就绪（也可直接对空目录调用）。</summary>
         internal static async Task<int> InstallVanillaAsync(string gameDir)
         {
-            AnsiConsole.Write(new Rule("[cyan]安装 Minecraft " + TargetVersion + "[/]").RuleStyle("grey"));
-            AnsiConsole.MarkupLine("目标: [yellow]" + Markup.Escape(gameDir) + "[/]");
-            AnsiConsole.MarkupLine("说明: 不下载 Java 运行时（产品语义：只检测），仅安装游戏本体/库/资源。");
+            AnsiConsole.MarkupLine("[grey]  目标: [/]" + Markup.Escape(gameDir));
+            AnsiConsole.MarkupLine("[grey]  来源: Mojang 官方（下载方式里可设置代理）[/]");
+            AnsiConsole.MarkupLine("[grey]  说明: 不下载 Java 运行时（只检测），仅安装游戏本体/库/资源。[/]");
 
             var stopwatch = Stopwatch.StartNew();
             long beforeBytes = GetDirectorySize(gameDir);
@@ -313,8 +313,26 @@ namespace RstcUpdater
                     return ExitDependencyBroken;
                 }
 
+                int anyProgress = 0;
+                var waitReporter = new Thread(() =>
+                {
+                    var wait = Stopwatch.StartNew();
+                    while (System.Threading.Volatile.Read(ref anyProgress) == 0 &&
+                           wait.Elapsed < TimeSpan.FromSeconds(120))
+                    {
+                        Console.Out.Write("\r  正在连接下载服务器…已等待 " + (int)wait.Elapsed.TotalSeconds + "s   ");
+                        Console.Out.Flush();
+                        Thread.Sleep(1000);
+                    }
+                })
+                {
+                    IsBackground = true
+                };
+                waitReporter.Start();
+
                 launcher.FileProgressChanged += (s, e) =>
                 {
+                    System.Threading.Volatile.Write(ref anyProgress, 1);
                     lock (sync)
                     {
                         files = e.ProgressedTasks;
@@ -324,6 +342,7 @@ namespace RstcUpdater
 
                 launcher.ByteProgressChanged += (s, e) =>
                 {
+                    System.Threading.Volatile.Write(ref anyProgress, 1);
                     lock (sync)
                     {
                         lastBytes = e.ProgressedBytes;
@@ -348,11 +367,15 @@ namespace RstcUpdater
                 }
                 catch (OperationCanceledException)
                 {
+                    System.Threading.Volatile.Write(ref anyProgress, 1);
+                    AnsiConsole.WriteLine();
                     AnsiConsole.MarkupLine("[yellow]安装已取消，保留现场供排查：[/]" + Markup.Escape(gameDir));
                     return ExitCancelled;
                 }
                 catch (Exception ex)
                 {
+                    System.Threading.Volatile.Write(ref anyProgress, 1);
+                    AnsiConsole.WriteLine();
                     Console.Error.WriteLine("安装失败: " + ex.GetType().Name + ": " + ex.Message);
                     if (ex.InnerException != null)
                     {
@@ -463,22 +486,19 @@ namespace RstcUpdater
 
         private static int VerifyInstall(string gameDir)
         {
-            var checks = new Table().Border(TableBorder.Rounded);
-            checks.AddColumn("检查项");
-            checks.AddColumn("结果");
-            checks.AddColumn("实际值");
+            var rows = new List<(string Label, string ValueMarkup)>();
 
             bool allOk = true;
 
             string versionJson = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".json");
             bool hasVersionJson = File.Exists(versionJson);
-            checks.AddRow("versions/" + TargetVersion + "/" + TargetVersion + ".json", hasVersionJson ? "[green]OK[/]" : "[red]缺失[/]", hasVersionJson ? "存在" : "-");
+            rows.Add(("versions/" + TargetVersion + "/" + TargetVersion + ".json", (hasVersionJson ? "[green]OK[/]" : "[red]缺失[/]") + "  " + (hasVersionJson ? "存在" : "-")));
             allOk &= hasVersionJson;
 
             string jar = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".jar");
             long jarSize = File.Exists(jar) ? new FileInfo(jar).Length : -1;
             bool jarOk = jarSize == ExpectedClientJarSize;
-            checks.AddRow("client jar 大小", jarOk ? "[green]OK[/]" : "[red]不符[/]", jarSize.ToString("N0") + " B");
+            rows.Add(("client jar 大小", (jarOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + jarSize.ToString("N0") + " B"));
             allOk &= jarOk;
 
             string assetIndex = Path.Combine(gameDir, "assets", "indexes", "34.json");
@@ -499,7 +519,7 @@ namespace RstcUpdater
             }
 
             bool assetOk = assetObjects == ExpectedAssetObjects;
-            checks.AddRow("assets/indexes/34.json", assetOk ? "[green]OK[/]" : "[red]不符[/]", assetObjects + " 个对象");
+            rows.Add(("assets/indexes/34.json", (assetOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + assetObjects + " 个对象"));
             allOk &= assetOk;
 
             string libDir = Path.Combine(gameDir, "libraries");
@@ -507,14 +527,14 @@ namespace RstcUpdater
                 ? Directory.EnumerateFiles(libDir, "*.jar", SearchOption.AllDirectories).Count()
                 : 0;
             bool libOk = libCount >= ExpectedClientLibraries;
-            checks.AddRow("libraries/*.jar", libOk ? "[green]OK[/]" : "[red]不足[/]", libCount + " 个 jar");
+            rows.Add(("libraries/*.jar", (libOk ? "[green]OK[/]" : "[red]不足[/]") + "  " + libCount + " 个 jar"));
             allOk &= libOk;
 
             long totalBytes = Directory.EnumerateFiles(gameDir, "*", SearchOption.AllDirectories)
                 .Sum(f => new FileInfo(f).Length);
-            checks.AddRow("总占用", "信息", (totalBytes / 1048576.0).ToString("F1") + " MB");
+            rows.Add(("总占用", "[grey]" + (totalBytes / 1048576.0).ToString("F1") + " MB[/]"));
 
-            AnsiConsole.Write(checks);
+            Ui.Card("安装校验", rows);
 
             if (allOk)
             {

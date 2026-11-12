@@ -113,6 +113,12 @@ namespace RstcUpdater
             AnsiConsole.MarkupLine("  [" + Dim + "]输入编号并回车；Ctrl+C 退出[/]");
         }
 
+        /// <summary>阶段标题（不加计数，用于安装等长流程）。</summary>
+        public static void Phase(string title)
+        {
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[red]▌ [/][white]" + Markup.Escape(title) + "[/]");
+        }
         /// <summary>向导步骤行：▌ 1/4 选择游戏目录。</summary>
         public static void Step(int step, int total, string title)
         {

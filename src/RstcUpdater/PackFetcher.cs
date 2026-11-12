@@ -193,9 +193,10 @@ namespace RstcUpdater
                 throw new InvalidDataException("资产缺少 sha256 digest，拒绝无强校验下载: " + asset.Name);
             }
 
-            AnsiConsole.MarkupLine("[cyan]下载[/] " + Markup.Escape(asset.Name) + "（" +
+            Ui.Phase("下载整合包");
+            AnsiConsole.MarkupLine("[grey]  " + Markup.Escape(asset.Name) + "（" +
                                    (asset.Size / 1048576.0).ToString("F1") + " MiB，tag " +
-                                   Markup.Escape(asset.Tag ?? "?") + "）");
+                                   Markup.Escape(asset.Tag ?? "?") + "）[/]");
 
             string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
             Directory.CreateDirectory(tmpDir);
