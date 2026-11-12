@@ -76,7 +76,13 @@ namespace RstcUpdater
 
         public static async Task<ReleaseInfo> GetLatestAsync(string repo)
         {
-            if (BetaChannel)
+            return await GetLatestByChannelAsync(repo, BetaChannel).ConfigureAwait(false);
+        }
+
+        /// <summary>按指定通道获取最新发布：beta=true 时包含 Pre-release，否则仅正式版。</summary>
+        public static async Task<ReleaseInfo> GetLatestByChannelAsync(string repo, bool beta)
+        {
+            if (beta)
             {
                 return await GetLatestBetaAsync(repo).ConfigureAwait(false);
             }

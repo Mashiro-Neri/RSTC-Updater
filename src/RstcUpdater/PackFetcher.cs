@@ -370,15 +370,16 @@ namespace RstcUpdater
             return ordered;
         }
 
-        /// <summary>测速：读取前 256 KiB，返回 MiB/s；失败返回 -1。</summary>
+        /// <summary>测速：读取最多 512 KiB（3 秒上限），返回 MiB/s；数据不足或失败返回 -1。</summary>
         private static double ProbeSpeed(string url)
         {
             try
             {
-                using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(8)))
+                const int targetBytes = 524288;
+                using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(10)))
+                using (var request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
-                    var request = new HttpRequestMessage(HttpMethod.Get, url);
-                    request.Headers.Range = new RangeHeaderValue(0, 262143);
+                    request.Headers.Range = new RangeHeaderValue(0, targetBytes - 1);
                     var watch = Stopwatch.StartNew();
                     using (var response = http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
                         .GetAwaiter().GetResult())
@@ -388,18 +389,37 @@ namespace RstcUpdater
                             return -1;
                         }
 
+                        long bytes = 0;
                         using (var stream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                        using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3)))
                         {
-                            var buffer = new byte[262144];
-                            int read = stream.ReadAsync(buffer, 0, buffer.Length).GetAwaiter().GetResult();
-                            watch.Stop();
-                            if (read <= 0 || watch.ElapsedMilliseconds <= 0)
+                            var buffer = new byte[65536];
+                            try
                             {
-                                return -1;
-                            }
+                                while (bytes < targetBytes)
+                                {
+                                    int read = stream.ReadAsync(buffer, 0, buffer.Length, cts.Token)
+                                        .GetAwaiter().GetResult();
+                                    if (read <= 0)
+                                    {
+                                        break;
+                                    }
 
-                            return read / 1048576.0 / (watch.ElapsedMilliseconds / 1000.0);
+                                    bytes += read;
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                            }
                         }
+
+                        watch.Stop();
+                        if (bytes < 32768 || watch.ElapsedMilliseconds <= 0)
+                        {
+                            return -1;
+                        }
+
+                        return bytes / 1048576.0 / (watch.ElapsedMilliseconds / 1000.0);
                     }
                 }
             }
@@ -408,34 +428,11 @@ namespace RstcUpdater
                 return -1;
             }
         }
-
         private static void RenderPackProgress(string source, long done, long total, TimeSpan elapsed)
         {
             double speed = elapsed.TotalSeconds > 0 ? done / 1048576.0 / elapsed.TotalSeconds : 0;
-            int percent = total > 0 ? (int)Math.Min(100, done * 100L / total) : 0;
-            const int barWidth = 24;
-            int filled = Math.Max(0, Math.Min(barWidth, percent * barWidth / 100));
-            string bar = new string('#', filled) + new string('-', barWidth - filled);
-            string eta = "--:--";
-            if (speed > 0.05 && total > done)
-            {
-                int seconds = (int)Math.Min(359999, (total - done) / 1048576.0 / speed);
-                eta = TimeSpan.FromSeconds(seconds).ToString("mm\\:ss");
-            }
-
-            string line = string.Format(
-                "\r  [{0}] {1,3}%  {2:F1}/{3:F1} MB  {4:F1} MB/s  剩余 {5}  {6}   ",
-                bar, percent, done / 1048576.0, total / 1048576.0, speed, eta, source);
-            int width = SafeWidth();
-            if (width > 20 && line.Length > width - 1)
-            {
-                line = line.Substring(0, width - 2);
-            }
-
-            Console.Out.Write(line);
-            Console.Out.Flush();
+            ProgressLine.Draw("下载整合包", done, total, speed, source);
         }
-
         private static int SafeWidth()
         {
             try

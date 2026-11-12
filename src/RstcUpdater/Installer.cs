@@ -10,7 +10,7 @@ namespace RstcUpdater
     /// <summary>V1 安装流程：原版 26.3 → 校验整合包 → Fabric → 实例 → 应用 → 完成信息。</summary>
     internal static class Installer
     {
-        public static async Task<int> InstallFlowAsync(string gameDir, string instanceName, string localZipPath = null)
+        public static async Task<int> InstallFlowAsync(string gameDir, string instanceName, string localZipPath = null, bool betaChannel = false)
         {
             gameDir = Path.GetFullPath(gameDir);
             if (!PackApplier.IsSafeInstanceName(instanceName))
@@ -79,7 +79,7 @@ namespace RstcUpdater
             }
             else
             {
-                ReleaseInfo release = await ReleaseClient.GetLatestAsync(ReleaseClient.PackRepo).ConfigureAwait(false);
+                ReleaseInfo release = await ReleaseClient.GetLatestByChannelAsync(ReleaseClient.PackRepo, betaChannel).ConfigureAwait(false);
                 if (release == null)
                 {
                     Console.Error.WriteLine("无法获取整合包 Release（网络/限流，且无缓存）");
@@ -127,10 +127,15 @@ namespace RstcUpdater
             if (!string.Equals(meta.Minecraft, Provisioner.TargetVersion, StringComparison.OrdinalIgnoreCase))
             {
                 Console.Error.WriteLine("该整合包基于 Minecraft " + meta.Minecraft + "，与 V1 目标 " +
-                                        Provisioner.TargetVersion + " 不符（等待 6.0 发布）");
+                                        Provisioner.TargetVersion + " 不符。");
                 if (downloaded)
                 {
                     File.Delete(zipPath);
+                }
+
+                if (!betaChannel)
+                {
+                    Ui.Note("提示：可改用「在线下载 Beta 版（内测 6.0）」重试，或等待正式版发布。", true);
                 }
 
                 return 5;
@@ -232,9 +237,9 @@ namespace RstcUpdater
                 ("整合包版本", Markup.Escape(tag ?? "?")),
                 ("资产", Markup.Escape(assetName ?? "?"))
             });
-            AnsiConsole.MarkupLine("启动方式：在 PCL2 / HMCL 里把游戏目录指向 [yellow]" + Markup.Escape(gameDir) + "[/]，");
-            AnsiConsole.MarkupLine("选择实例 [yellow]" + Markup.Escape(instanceName) + "[/] 启动；若启动器未开启版本隔离，需手动开启。");
-            AnsiConsole.MarkupLine("[grey]提示：版本列表里还会出现 26.3 与 " + Provisioner.FabricVersionId + "，请选上面的实例。[/]");
+            AnsiConsole.MarkupLine("[grey]  启动方式：在 PCL2 / HMCL 里把游戏目录指向 [/]" + Markup.Escape(gameDir));
+            AnsiConsole.MarkupLine("[grey]            选择实例 [/]" + Markup.Escape(instanceName) + "[grey] 启动；若启动器未开启版本隔离，需手动开启。[/]");
+            AnsiConsole.MarkupLine("[grey]  提示：版本列表里还会出现 26.3 与 " + Provisioner.FabricVersionId + "，请选上面的实例。[/]");
         }
     }
 }

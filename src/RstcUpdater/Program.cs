@@ -332,7 +332,6 @@ namespace RstcUpdater
 
                 launcher.FileProgressChanged += (s, e) =>
                 {
-                    System.Threading.Volatile.Write(ref anyProgress, 1);
                     lock (sync)
                     {
                         files = e.ProgressedTasks;
@@ -385,6 +384,7 @@ namespace RstcUpdater
                 }
             }
 
+            ProgressLine.Clear();
             stopwatch.Stop();
             long afterBytes = GetDirectorySize(gameDir);
             double averageSpeed = stopwatch.Elapsed.TotalSeconds > 0
@@ -447,30 +447,9 @@ namespace RstcUpdater
         private static void RenderInstallProgress(int files, int totalFiles, long bytes, long totalBytes, TimeSpan elapsed)
         {
             double speed = elapsed.TotalSeconds > 0 ? bytes / 1048576.0 / elapsed.TotalSeconds : 0;
-            int percent = totalBytes > 0 ? (int)Math.Min(100, bytes * 100L / totalBytes) : 0;
-            const int barWidth = 24;
-            int filled = Math.Max(0, Math.Min(barWidth, percent * barWidth / 100));
-            string bar = new string('#', filled) + new string('-', barWidth - filled);
-            string eta = "--:--";
-            if (speed > 0.05 && totalBytes > bytes)
-            {
-                int seconds = (int)Math.Min(359999, (totalBytes - bytes) / 1048576.0 / speed);
-                eta = TimeSpan.FromSeconds(seconds).ToString("mm\\:ss");
-            }
-
-            string line = string.Format(
-                "\r  [{0}] {1,3}%  {2:F1}/{3:F1} MB  {4:F1} MB/s  剩余 {5}  文件 {6}/{7}   ",
-                bar, percent, bytes / 1048576.0, totalBytes / 1048576.0, speed, eta, files, totalFiles);
-            int width = SafeConsoleWidth();
-            if (width > 20 && line.Length > width - 1)
-            {
-                line = line.Substring(0, width - 2);
-            }
-
-            Console.Out.Write(line);
-            Console.Out.Flush();
+            string extra = files > 0 && totalFiles > 0 ? "文件 " + files + "/" + totalFiles : null;
+            ProgressLine.Draw("下载原版", bytes, totalBytes, speed, extra);
         }
-
         private static int SafeConsoleWidth()
         {
             try
@@ -492,13 +471,13 @@ namespace RstcUpdater
 
             string versionJson = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".json");
             bool hasVersionJson = File.Exists(versionJson);
-            rows.Add(("versions/" + TargetVersion + "/" + TargetVersion + ".json", (hasVersionJson ? "[green]OK[/]" : "[red]缺失[/]") + "  " + (hasVersionJson ? "存在" : "-")));
+            rows.Add(("版本文件", (hasVersionJson ? "[green]OK[/]" : "[red]缺失[/]") + "  " + (hasVersionJson ? "26.3.json" : "-")));
             allOk &= hasVersionJson;
 
             string jar = Path.Combine(gameDir, "versions", TargetVersion, TargetVersion + ".jar");
             long jarSize = File.Exists(jar) ? new FileInfo(jar).Length : -1;
             bool jarOk = jarSize == ExpectedClientJarSize;
-            rows.Add(("client jar 大小", (jarOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + jarSize.ToString("N0") + " B"));
+            rows.Add(("client.jar", (jarOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + jarSize.ToString("N0") + " B"));
             allOk &= jarOk;
 
             string assetIndex = Path.Combine(gameDir, "assets", "indexes", "34.json");
@@ -519,7 +498,7 @@ namespace RstcUpdater
             }
 
             bool assetOk = assetObjects == ExpectedAssetObjects;
-            rows.Add(("assets/indexes/34.json", (assetOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + assetObjects + " 个对象"));
+            rows.Add(("assets 索引", (assetOk ? "[green]OK[/]" : "[red]不符[/]") + "  " + assetObjects + " 个对象"));
             allOk &= assetOk;
 
             string libDir = Path.Combine(gameDir, "libraries");
@@ -527,12 +506,12 @@ namespace RstcUpdater
                 ? Directory.EnumerateFiles(libDir, "*.jar", SearchOption.AllDirectories).Count()
                 : 0;
             bool libOk = libCount >= ExpectedClientLibraries;
-            rows.Add(("libraries/*.jar", (libOk ? "[green]OK[/]" : "[red]不足[/]") + "  " + libCount + " 个 jar"));
+            rows.Add(("libraries", (libOk ? "[green]OK[/]" : "[red]不足[/]") + "  " + libCount + " 个 jar"));
             allOk &= libOk;
 
             long totalBytes = Directory.EnumerateFiles(gameDir, "*", SearchOption.AllDirectories)
                 .Sum(f => new FileInfo(f).Length);
-            rows.Add(("总占用", "[grey]" + (totalBytes / 1048576.0).ToString("F1") + " MB[/]"));
+            rows.Add(("目录总量", "[grey]" + (totalBytes / 1048576.0).ToString("F1") + " MiB[/]"));
 
             Ui.Card("安装校验", rows);
 

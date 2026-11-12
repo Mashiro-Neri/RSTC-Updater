@@ -126,6 +126,10 @@ internal static class ConCapture
             UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(exe)
         };
+        if (args.Length > 3)
+        {
+            psi.Arguments = args[3];
+        }
         Process process = Process.Start(psi);
         Thread.Sleep(2500);
 

@@ -182,7 +182,7 @@ namespace RstcUpdater
                 }
 
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[grey]按任意键返回菜单…[/]");
+                AnsiConsole.MarkupLine("[grey]  按任意键返回菜单…[/]");
                 if (!ScriptMode)
                 {
                     try
@@ -849,7 +849,8 @@ namespace RstcUpdater
             string localZip = null;
             string source = SelectPrompt("请选择整合包来源:", new[]
             {
-                "在线下载最新整合包（推荐）",
+                "在线下载最新整合包（稳定版）",
+                "在线下载 Beta 版（内测）",
                 "使用本地 zip 文件",
                 "返回菜单"
             });
@@ -858,6 +859,7 @@ namespace RstcUpdater
                 return gameDir;
             }
 
+            bool betaChannel = source == "在线下载 Beta 版（内测）";
             if (source == "使用本地 zip 文件")
             {
                 string zipMode = SelectPrompt("选择 zip 文件:", new[]
@@ -976,7 +978,9 @@ namespace RstcUpdater
             }
 
             Ui.Step(5, 5, "安装确认");
-            string sourceText = localZip == null ? "在线下载最新整合包" : "本地 zip：" + Path.GetFileName(localZip);
+            string sourceText = localZip != null
+                ? "本地 zip：" + Path.GetFileName(localZip)
+                : betaChannel ? "在线下载 Beta 版（内测）" : "在线下载稳定版";
             Ui.Card("安装确认", BuildInstallRows(dir, name, sourceText, false));
 
             if (!ConfirmPrompt("开始安装？", true))
@@ -984,7 +988,7 @@ namespace RstcUpdater
                 return gameDir;
             }
 
-            return await RunInstallAsync(dir, name, localZip, config).ConfigureAwait(false);
+            return await RunInstallAsync(dir, name, localZip, betaChannel, config).ConfigureAwait(false);
         }
 
         /// <summary>脚本模式：保持原有提问顺序（实例名 → zip → 确认），供 menu-smoke 使用。</summary>
@@ -1028,14 +1032,14 @@ namespace RstcUpdater
             }
 
             string localZip = string.IsNullOrWhiteSpace(localZipInput) ? null : localZipInput.Trim().Trim('"');
-            string sourceText = localZip == null ? "在线下载最新整合包" : "本地 zip：" + Path.GetFileName(localZip);
+            string sourceText = localZip != null ? "本地 zip：" + Path.GetFileName(localZip) : "在线下载稳定版";
             Ui.Card("安装确认", BuildInstallRows(dir, name, sourceText, true));
             if (!ConfirmPrompt("开始安装？", true))
             {
                 return gameDir;
             }
 
-            return await RunInstallAsync(dir, name, localZip, config).ConfigureAwait(false);
+            return await RunInstallAsync(dir, name, localZip, false, config).ConfigureAwait(false);
         }
 
         private static (string Label, string ValueMarkup)[] BuildInstallRows(string dir, string name, string sourceText, bool scriptMode)
@@ -1063,10 +1067,10 @@ namespace RstcUpdater
             };
         }
 
-        private static async Task<string> RunInstallAsync(string dir, string name, string localZip, AppConfig config)
+        private static async Task<string> RunInstallAsync(string dir, string name, string localZip, bool betaChannel, AppConfig config)
         {
             Ui.Note("开始安装…（下载量较大，可 Ctrl+C 取消；中断后重跑会复用已下载文件）");
-            int code = await Installer.InstallFlowAsync(dir, name, localZip).ConfigureAwait(false);
+            int code = await Installer.InstallFlowAsync(dir, name, localZip, betaChannel).ConfigureAwait(false);
             if (code == 0)
             {
                 config.LastGameDir = dir;
