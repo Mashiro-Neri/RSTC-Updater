@@ -682,7 +682,7 @@ CmlLib 内置 `MinecraftJavaPathResolver` 只枚举 `.minecraft/runtime`，不�
 
 **复审加固（R2）**：迁移异常自动回滚（恢复被覆盖、删除新建）；自更新备份任一文件失败即中止；替换失败保留备份并记录错误；菜单新增「回滚未完成更新」；多实例时状态标注数量。
 
-**发布侧校验（新增）**：`scripts/release/validate-pack.ps1` 对整合包/更新器 zip 做发布前门禁（根 `modrinth.index.json`、`versionId`、`dependencies.minecraft`、`overrides/`、**不得含 `PCL/`**、mods 数量、更新器含 `RstcUpdater.exe`）。实测：26.3 夹具包 PASS；真实 5.5 包因含 `PCL/`（4 项）且 MC=1.21.10 被正确判 FAIL。发布流程见 `docs/发布检查清单.md`。
+**6.0 候选包（2026-11-12）**：从玩家原始客户端（只读）用 `scripts/release/build-pack.ps1` 组装 `RSTC-6.0.zip`（324.2 MiB，sha256 `33CF1DF285E3C4DBEFDC81E47724F7F0E32B295334D770949C6A4963850F5710`，120 mods，无 `PCL/`），`validate-pack.ps1` PASS，本机 `--install-v1` 装出 `RSTC-6.0-TEST`（mods=120）；待用户启动确认后发布。`r`n`r`n**发布侧校验（新增）**：`scripts/release/validate-pack.ps1` 对整合包/更新器 zip 做发布前门禁（根 `modrinth.index.json`、`versionId`、`dependencies.minecraft`、`overrides/`、**不得含 `PCL/`**、mods 数量、更新器含 `RstcUpdater.exe`）。实测：26.3 夹具包 PASS；真实 5.5 包因含 `PCL/`（4 项）且 MC=1.21.10 被正确判 FAIL。发布流程见 `docs/发布检查清单.md`。
 
 ---
 
