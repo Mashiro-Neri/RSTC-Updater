@@ -117,9 +117,19 @@ namespace RstcUpdater
             string title = "红石镇客户端更新器";
             string subtitle = "Minecraft 26.3 · Fabric 0.20.1";
             string plainTitleLine = title + "   »   " + subtitle;
-            int titlePad = Math.Max(0, (width - DisplayWidth(plainTitleLine)) / 2);
-            AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]" +
-                                   "   [" + Accent + "]»[/]   " + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
+            if (DisplayWidth(plainTitleLine) <= width)
+            {
+                int titlePad = Math.Max(0, (width - DisplayWidth(plainTitleLine)) / 2);
+                AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]" +
+                                       "   [" + Accent + "]»[/]   " + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
+            }
+            else
+            {
+                int titlePad = Math.Max(0, (width - DisplayWidth(title)) / 2);
+                AnsiConsole.MarkupLine(new string(' ', titlePad) + "[bold white]" + Markup.Escape(title) + "[/]");
+                int subPad = Math.Max(0, (width - DisplayWidth(subtitle)) / 2);
+                AnsiConsole.MarkupLine(new string(' ', subPad) + "[" + dim + "]" + Markup.Escape(subtitle) + "[/]");
+            }
             if (animate)
             {
                 SweepRule(width);

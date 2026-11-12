@@ -426,7 +426,7 @@ namespace RstcUpdater
                 ? Directory.EnumerateFiles(Path.Combine(instDir, "mods"), "*.jar").Count()
                 : 0;
             rows.Add(("mods/*.jar", mods.ToString()));
-            Ui.Rows(rows, 22);
+            Ui.Rows(rows, 24);
         }
 
         // ==================== 可脚本化输入（测试钩子） ====================
