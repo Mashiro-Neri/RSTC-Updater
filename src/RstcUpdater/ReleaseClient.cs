@@ -25,6 +25,7 @@ namespace RstcUpdater
         public DateTime? PublishedAt;
         public List<ReleaseAsset> Assets = new List<ReleaseAsset>();
         public bool FromCache;
+        public bool IsPrerelease;
         public DateTime? FetchedAt;
     }
 
@@ -34,21 +35,33 @@ namespace RstcUpdater
         public const string PackRepo = "Mashiro-Neri/Redstone-Town-Client_update_modpack";
         public const string UpdaterRepo = "Mashiro-Neri/RSTC-Updater";
 
+        /// <summary>内测通道：设置 RSTC_RELEASE_CHANNEL=beta 时包含 Pre-release（默认只看正式版）。</summary>
+        public static bool BetaChannel
+        {
+            get
+            {
+                return string.Equals(Environment.GetEnvironmentVariable("RSTC_RELEASE_CHANNEL"), "beta",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        public static string ChannelName
+        {
+            get { return BetaChannel ? "beta" : "stable"; }
+        }
+
         public static async Task<ReleaseInfo> GetLatestAsync(string repo)
         {
-            string cachePath = CachePath(repo);
+            if (BetaChannel)
+            {
+                return await GetLatestBetaAsync(repo).ConfigureAwait(false);
+            }
+
+            string cachePath = CachePath(repo, false);
             try
             {
-                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) })
+                using (var http = CreateHttp())
                 {
-                    http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0");
-                    string token = Environment.GetEnvironmentVariable("RSTC_GITHUB_TOKEN");
-                    if (!string.IsNullOrEmpty(token))
-                    {
-                        http.DefaultRequestHeaders.Authorization =
-                            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    }
-
                     string json = await http.GetStringAsync("https://api.github.com/repos/" + repo + "/releases/latest")
                         .ConfigureAwait(false);
                     ReleaseInfo info = Parse(repo, json, false);
@@ -66,6 +79,83 @@ namespace RstcUpdater
 
                 return null;
             }
+        }
+
+        /// <summary>内测通道：取 releases 列表里 tag 最新的非 draft 发布（含 Pre-release）。</summary>
+        private static async Task<ReleaseInfo> GetLatestBetaAsync(string repo)
+        {
+            string cachePath = CachePath(repo, true);
+            try
+            {
+                using (var http = CreateHttp())
+                {
+                    string json = await http.GetStringAsync(
+                        "https://api.github.com/repos/" + repo + "/releases?per_page=30").ConfigureAwait(false);
+                    using (var doc = JsonDocument.Parse(json))
+                    {
+                        if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                        {
+                            throw new FormatException("releases 不是数组");
+                        }
+
+                        JsonElement? best = null;
+                        string bestTag = null;
+                        foreach (var release in doc.RootElement.EnumerateArray())
+                        {
+                            if (release.TryGetProperty("draft", out var draft) && draft.GetBoolean())
+                            {
+                                continue;
+                            }
+
+                            string tag = release.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+                            if (string.IsNullOrEmpty(tag))
+                            {
+                                continue;
+                            }
+
+                            if (bestTag == null || string.Compare(tag, bestTag, StringComparison.OrdinalIgnoreCase) > 0)
+                            {
+                                best = release;
+                                bestTag = tag;
+                            }
+                        }
+
+                        if (best == null)
+                        {
+                            throw new InvalidDataException("没有可用发布");
+                        }
+
+                        string chosen = best.Value.GetRawText();
+                        ReleaseInfo info = Parse(repo, chosen, false);
+                        SaveCache(cachePath, chosen);
+                        return info;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                ReleaseInfo cached = LoadCache(repo, cachePath);
+                if (cached != null)
+                {
+                    return cached;
+                }
+
+                return null;
+            }
+        }
+
+        private static HttpClient CreateHttp()
+        {
+            var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0");
+            string token = Environment.GetEnvironmentVariable("RSTC_GITHUB_TOKEN");
+            if (!string.IsNullOrEmpty(token))
+            {
+                http.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            return http;
         }
 
         public static ReleaseAsset FindPackAsset(ReleaseInfo info)
@@ -162,14 +252,20 @@ namespace RstcUpdater
                     }
                 }
 
+                if (root.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
+                {
+                    info.IsPrerelease = true;
+                }
+
                 return info;
             }
         }
 
-        private static string CachePath(string repo)
+        private static string CachePath(string repo, bool beta)
         {
             string safe = repo.Replace('/', '_');
-            return Path.Combine(AppConfig.ConfigDir, "cache", safe + ".json");
+            string suffix = beta ? ".beta.json" : ".json";
+            return Path.Combine(AppConfig.ConfigDir, "cache", safe + suffix);
         }
 
         private static void SaveCache(string path, string json)

@@ -219,7 +219,7 @@ namespace RstcUpdater
                 {
                     var asset = ReleaseClient.FindPackAsset(release);
                     string ver = ReleaseClient.VersionFromAssetName(asset?.Name);
-                    latest = ver ?? "未知";
+                    latest = (ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "");
                     if (release.FromCache)
                     {
                         latest += "（来自缓存 " + (release.FetchedAt?.ToString("yyyy-MM-dd") ?? "-") + "）";
@@ -230,6 +230,9 @@ namespace RstcUpdater
             {
             }
 
+            table.AddRow("通道", ReleaseClient.BetaChannel
+                ? "[yellow]beta（含 Pre-release）[/]"
+                : "stable（仅正式版）");
             table.AddRow("最新版本", latest);
             table.AddRow("远端目标 MC", "未知（待 pack-meta.json；V1 目标为 26.3）");
 
