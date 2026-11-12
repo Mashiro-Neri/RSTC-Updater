@@ -35,6 +35,16 @@ namespace RstcUpdater
         public const string PackRepo = "Mashiro-Neri/Redstone-Town-Client_update_modpack";
         public const string UpdaterRepo = "Mashiro-Neri/RSTC-Updater";
 
+        /// <summary>GitHub API 基址（测试可指向本地 mock，例如 http://127.0.0.1:18080）。</summary>
+        public static string ApiBase
+        {
+            get
+            {
+                string custom = Environment.GetEnvironmentVariable("RSTC_GITHUB_API_BASE");
+                return string.IsNullOrWhiteSpace(custom) ? "https://api.github.com" : custom.TrimEnd('/');
+            }
+        }
+
         /// <summary>内测通道：设置 RSTC_RELEASE_CHANNEL=beta 时包含 Pre-release（默认只看正式版）。</summary>
         public static bool BetaChannel
         {
@@ -92,7 +102,7 @@ namespace RstcUpdater
             {
                 using (var http = CreateHttp())
                 {
-                    string json = await http.GetStringAsync("https://api.github.com/repos/" + repo + "/releases/latest")
+                    string json = await http.GetStringAsync(ApiBase + "/repos/" + repo + "/releases/latest")
                         .ConfigureAwait(false);
                     ReleaseInfo info = Parse(repo, json, false);
                     SaveCache(cachePath, json);
@@ -120,7 +130,7 @@ namespace RstcUpdater
                 using (var http = CreateHttp())
                 {
                     string json = await http.GetStringAsync(
-                        "https://api.github.com/repos/" + repo + "/releases?per_page=30").ConfigureAwait(false);
+                        ApiBase + "/repos/" + repo + "/releases?per_page=30").ConfigureAwait(false);
                     using (var doc = JsonDocument.Parse(json))
                     {
                         if (doc.RootElement.ValueKind != JsonValueKind.Array)

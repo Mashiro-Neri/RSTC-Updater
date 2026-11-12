@@ -860,6 +860,11 @@ namespace RstcUpdater
             }
 
             bool betaChannel = source == "在线下载 Beta 版（内测）";
+            if (source.StartsWith("在线下载", StringComparison.Ordinal))
+            {
+                Environment.SetEnvironmentVariable("RSTC_RELEASE_CHANNEL", betaChannel ? "beta" : "");
+            }
+
             if (source == "使用本地 zip 文件")
             {
                 string zipMode = SelectPrompt("选择 zip 文件:", new[]
@@ -889,8 +894,6 @@ namespace RstcUpdater
                 }
 
                 localZip = zip;
-                Ui.Step(4, 5, "下载方式");
-                Ui.Note("使用本地 zip，跳过下载源选择；原版 Minecraft 不经过镜像，如需代理可在后续版本设置。");
             }
             else
             {
@@ -1046,25 +1049,28 @@ namespace RstcUpdater
         {
             var javas = JavaDetector.Detect(dir);
             bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
-            string estimate = sourceText.StartsWith("本地 zip")
-                ? "原版约 590 MiB + 本地包（已有文件会复用）"
-                : "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）";
-            return new[]
+            bool local = sourceText.StartsWith("本地 zip", StringComparison.Ordinal);
+            var rows = new List<(string Label, string ValueMarkup)>
             {
                 ("游戏目录", Markup.Escape(dir)),
                 ("实例名", Markup.Escape(name)),
                 ("整合包来源", Markup.Escape(sourceText)),
                 ("安装内容", "原版 26.3 + 整合包；无需预装 Minecraft"),
                 ("代理", string.IsNullOrEmpty(NetworkConfig.ProxyUrl) ? "不使用" : Markup.Escape(NetworkConfig.ProxyUrl)),
-                ("下载源", PackFetcher.PreferredMirror == -2
-                    ? "自定义 " + Markup.Escape((PackFetcher.CustomMirror ?? "").Trim())
-                    : PackFetcher.PreferredMirror >= 0
-                        ? Markup.Escape(PackFetcher.MirrorNames[PackFetcher.PreferredMirror])
-                        : "自动测速（选最快的）"),
                 ("Java", javaOk
                     ? "[green]Java " + RequiredJava + " 已就绪[/]"
                     : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")
             };
+            if (!local)
+            {
+                rows.Insert(5, ("下载源", PackFetcher.PreferredMirror == -2
+                    ? "自定义 " + Markup.Escape((PackFetcher.CustomMirror ?? "").Trim())
+                    : PackFetcher.PreferredMirror >= 0
+                        ? Markup.Escape(PackFetcher.MirrorNames[PackFetcher.PreferredMirror])
+                        : "自动测速（选最快的）"));
+            }
+
+            return rows.ToArray();
         }
 
         private static async Task<string> RunInstallAsync(string dir, string name, string localZip, bool betaChannel, AppConfig config)

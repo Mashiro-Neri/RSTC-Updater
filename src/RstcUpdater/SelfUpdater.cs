@@ -134,7 +134,6 @@ namespace RstcUpdater
             string exePath = Assembly.GetExecutingAssembly().Location;
             string installDir = Path.GetDirectoryName(exePath) ?? Environment.CurrentDirectory;
             string tempBase = Path.Combine(Path.GetTempPath(), "RSTC-Updater-selfupdate-" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
-            string zipPath = Path.Combine(tempBase, check.AssetName);
             Directory.CreateDirectory(tempBase);
 
             var asset = new PackAssetRef
@@ -145,7 +144,7 @@ namespace RstcUpdater
                 Url = check.AssetUrl,
                 Tag = check.LatestTag
             };
-            await PackFetcher.DownloadAssetAsync(tempBase, asset).ConfigureAwait(false);
+            string zipPath = await PackFetcher.DownloadAssetAsync(tempBase, asset).ConfigureAwait(false);
 
             string extractDir = Path.Combine(tempBase, "new");
             Directory.CreateDirectory(extractDir);
@@ -204,6 +203,8 @@ namespace RstcUpdater
             var script = new StringBuilder();
             script.AppendLine("@echo off");
             script.AppendLine("timeout /t 2 /nobreak >nul");
+            script.AppendLine("if \"%RSTC_SELFUPDATE_FORCE_FAIL%\"==\"1\" echo RSTC self-update: forced failure (test) > \"%TEMP%\\rstc-selfupdate-error.txt\"");
+            script.AppendLine("if \"%RSTC_SELFUPDATE_FORCE_FAIL%\"==\"1\" goto fail");
             script.AppendLine("robocopy \"" + extractDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC /NS >nul");
             script.AppendLine("if errorlevel 8 goto fail");
             script.AppendLine("start \"\" \"" + exePath + "\"");

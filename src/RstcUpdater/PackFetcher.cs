@@ -216,6 +216,36 @@ namespace RstcUpdater
             Directory.CreateDirectory(tmpDir);
             string zipPath = Path.Combine(tmpDir, asset.Name);
 
+            if (File.Exists(zipPath) && asset.Size > 0)
+            {
+                try
+                {
+                    var existing = new FileInfo(zipPath);
+                    if (existing.Length == asset.Size)
+                    {
+                        string existingSha = ComputeSha256(zipPath);
+                        if (string.Equals(existingSha, asset.Sha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            LastSummary = "整合包已存在且校验通过，复用：" + asset.Name;
+                            if (ProgressLine.Parallel)
+                            {
+                                ProgressLine.SetParallelPackSummary(LastSummary);
+                            }
+                            else if (!SuppressProgress)
+                            {
+                                AnsiConsole.MarkupLine("[green]复用[/] 已下载的整合包（sha256 一致）：" +
+                                                       Markup.Escape(asset.Name));
+                            }
+
+                            return zipPath;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
             AbortRequested = false;
             long freeBefore = GetFreeSpace(gameDir);
             var sw = Stopwatch.StartNew();
@@ -527,6 +557,15 @@ namespace RstcUpdater
             catch
             {
                 return 0;
+            }
+        }
+
+        private static string ComputeSha256(string path)
+        {
+            using (var sha = SHA256.Create())
+            using (var stream = File.OpenRead(path))
+            {
+                return ToHex(sha.ComputeHash(stream));
             }
         }
 

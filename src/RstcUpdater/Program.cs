@@ -78,6 +78,8 @@ namespace RstcUpdater
                         return MigrateV1(args);
                     case "--check-self":
                         return await CheckSelfAsync();
+                    case "--self-update-apply":
+                        return await SelfUpdateApplyAsync();
                     case "--status":
                         return Menu.PrintStatus(args.Length > 1 ? args[1] : null);
                     case "--menu-script":
@@ -863,6 +865,44 @@ namespace RstcUpdater
             return 0;
         }
 
+        private static async Task<int> SelfUpdateApplyAsync()
+        {
+            SelfUpdateCheck check = await SelfUpdater.CheckAsync().ConfigureAwait(false);
+            Console.WriteLine("当前 " + check.Current + "，远端 " + (check.LatestTag ?? "?") + " — " + check.Message);
+            if (check.Message != null && check.Message.Contains("无法获取"))
+            {
+                return 5;
+            }
+
+            if (!check.UpdateAvailable)
+            {
+                return 0;
+            }
+
+            try
+            {
+                return await SelfUpdater.ApplyAsync(check).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("SELFUPDATE-EX: " + ex.GetType().FullName);
+                for (Exception inner = ex.InnerException; inner != null; inner = inner.InnerException)
+                {
+                    Console.Error.WriteLine("SELFUPDATE-INNER: " + inner.GetType().FullName + ": " + inner.Message);
+                }
+
+                try
+                {
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rstc-selfupdate-stack.txt"), ex.ToString());
+                }
+                catch (Exception)
+                {
+                }
+
+                return 9;
+            }
+        }
+
         private static UpdateOptions ParseUpdateOptions(string[] args)
         {
             if (args.Length < 2)
@@ -897,6 +937,9 @@ namespace RstcUpdater
                     case "--force":
                         options.Force = true;
                         break;
+                    case "--beta":
+                        Environment.SetEnvironmentVariable("RSTC_RELEASE_CHANNEL", "beta");
+                        break;
                     default:
                         throw new UsageException("--update-v1 不认识的参数: " + args[i]);
                 }
@@ -920,6 +963,7 @@ namespace RstcUpdater
             string gameDir = args[1];
             string instance = "红石镇客户端";
             string localZip = null;
+            bool beta = false;
             for (int i = 2; i < args.Length; i++)
             {
                 if (args[i] == "--instance")
@@ -942,6 +986,7 @@ namespace RstcUpdater
                 }
                 else if (args[i] == "--beta")
                 {
+                    beta = true;
                     Environment.SetEnvironmentVariable("RSTC_RELEASE_CHANNEL", "beta");
                 }
                 else
@@ -952,7 +997,7 @@ namespace RstcUpdater
 
             try
             {
-                return await Installer.InstallFlowAsync(gameDir, instance, localZip).ConfigureAwait(false);
+                return await Installer.InstallFlowAsync(gameDir, instance, localZip, beta).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -1157,6 +1202,7 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run] [--force]");
             writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings] [--overwrite]");
             writer.WriteLine("  RstcUpdater.exe --check-self   # 检查更新器自身更新");
+            writer.WriteLine("  RstcUpdater.exe --self-update-apply   # 自更新检查并立即应用（内部/测试用）");
             writer.WriteLine("  RstcUpdater.exe --status [游戏目录]   # 非交互输出状态面板 + 关键文件检查");
             writer.WriteLine("  RstcUpdater.exe --menu-script <脚本文件>   # 用脚本输入驱动菜单（测试用）");
             writer.WriteLine("  RstcUpdater.exe （无参数）   # 交互式菜单");

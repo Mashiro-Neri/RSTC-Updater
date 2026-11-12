@@ -10,6 +10,8 @@ namespace RstcUpdater
     /// <summary>V1 安装流程：原版 26.3 → 校验整合包 → Fabric → 实例 → 应用 → 完成信息。</summary>
     internal static class Installer
     {
+        private const int ExitCancelledCode = 130;
+
         public static async Task<int> InstallFlowAsync(string gameDir, string instanceName, string localZipPath = null, bool betaChannel = false)
         {
             gameDir = Path.GetFullPath(gameDir);
@@ -39,8 +41,18 @@ namespace RstcUpdater
             bool downloaded = false;
             PackAssetRef packAsset = null;
             Task<string> packTask = null;
+            bool earlyCancelled = false;
+            ConsoleCancelEventHandler earlyHandler = (s, e) =>
+            {
+                e.Cancel = true;
+                earlyCancelled = true;
+            };
+            Console.CancelKeyPress += earlyHandler;
+            try
+            {
             if (string.IsNullOrEmpty(localZipPath))
             {
+                Ui.Note("正在获取整合包 Release（GitHub API，可能需要几秒；Ctrl+C 取消）…");
                 ReleaseInfo release = await ReleaseClient.GetLatestByChannelAsync(ReleaseClient.PackRepo, betaChannel).ConfigureAwait(false);
                 if (release == null)
                 {
@@ -64,6 +76,12 @@ namespace RstcUpdater
                     }
                 }
 
+                if (earlyCancelled)
+                {
+                    Console.Error.WriteLine("安装已取消。");
+                    return ExitCancelledCode;
+                }
+
                 string tmpDir = Path.Combine(gameDir, ".rstc-tmp");
                 Directory.CreateDirectory(tmpDir);
                 string releaseJson = Path.Combine(tmpDir, "latest-release.json");
@@ -77,6 +95,17 @@ namespace RstcUpdater
                 PackFetcher.SuppressProgress = true;
                 packTask = PackFetcher.DownloadAssetAsync(gameDir, packAsset);
                 Ui.Note("整合包已在后台并行下载（与原版同时进行，完成后校验）…");
+            }
+            }
+            finally
+            {
+                Console.CancelKeyPress -= earlyHandler;
+            }
+
+            if (earlyCancelled)
+            {
+                Console.Error.WriteLine("安装已取消。");
+                return ExitCancelledCode;
             }
 
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
@@ -97,7 +126,7 @@ namespace RstcUpdater
                 for (int attempt = 1; attempt <= 3; attempt++)
                 {
                     code = await Program.InstallVanillaAsync(gameDir).ConfigureAwait(false);
-                    if (code == 0)
+                    if (code == 0 || code == ExitCancelledCode)
                     {
                         break;
                     }
@@ -108,6 +137,7 @@ namespace RstcUpdater
 
                 if (code != 0)
                 {
+                    bool wasCancelled = code == ExitCancelledCode;
                     if (packTask != null)
                     {
                         PackFetcher.AbortRequested = true;
@@ -124,7 +154,7 @@ namespace RstcUpdater
 
                     PackFetcher.SuppressProgress = false;
                     ProgressLine.AbortParallel();
-                    Console.Error.WriteLine("原版 26.3 安装失败（已重试 3 次），已中止");
+                    Console.Error.WriteLine(wasCancelled ? "安装已取消。" : "原版 26.3 安装失败（已重试 3 次），已中止");
                     return code;
                 }
             }

@@ -1,60 +1,70 @@
-# RSTC Updater · 红石镇客户端更新器
+# RSTC Updater · 红石镇客户端更新器 v5
 
-红石镇客户端（Redstone Town Client）整合包自动更新工具。
+红石镇客户端（Redstone Town Client）的安装 / 更新 / 迁移 / 回滚工具，替代 v4 的 PowerShell 脚本。
 
 ## 下载
 
-从 [Release](https://github.com/Mashiro-Neri/RSTC-Updater/releases) 下载：
-- `update_modpack.ps1`
-- `update_modpack.bat`
+从 [Releases](https://github.com/Mashiro-Neri/RSTC-Updater/releases) 下载最新 `RSTC-Updater-<版本>.zip`，解压后双击 `启动.bat`（或 `RstcUpdater.exe`）。
+
+- 解压目录自选；**不要**放进 `.minecraft` 里也能运行。
+- v4 用户：v4 自更新只认旧脚本资产，不会自动升级到 v5；请手动下载 zip 替换旧更新器目录。
+- 程序暂未签名，Windows SmartScreen 提示时请核对 Release 页 SHA256 后选择“仍要运行”。
 
 ## 使用
 
-1. 将两个文件放入版本文件夹内（一般在 `.minecraft\versions\红石镇客户端\`），放在里面可以自动获取路径
-2. 双击 `update_modpack.bat`
-3. 按菜单操作：
+主菜单方向键操作：`↑↓` 移动、`Enter` 确认、`Esc` / `Ctrl+C` 退出；也可按数字键直选。
 
 | 菜单 | 功能 |
-|------|------|
-| 检查整合包更新 | 比对本机版本与 GitHub 最新 Release，自动下载并同步 mods / config / resourcepacks 等 |
-| 没有整合包（首次下载） | 下载整合包 ZIP 到桌面，手动拖入启动器安装 |
-| 更新启动器 | 检查并更新 `update_modpack.ps1` / `update_modpack.bat` 自身 |
+|---|---|
+| 安装到新目录 | 5 步向导：游戏目录 → 实例名 → 整合包来源 → 下载方式 → 确认；支持 Windows 原生文件夹/zip 选择器 |
+| 更新现有实例 | 拉取最新整合包并应用，保留存档/设置，可预览与 dry-run |
+| 从旧实例迁移 | 白名单迁移存档/截图/地图等；默认拒绝覆盖，覆盖前备份 |
+| 检查更新器更新 | 检查并自更新（退出后自动替换、失败回滚） |
+| 检查关键文件 | 状态面板 + 26.3/Fabric/资源完整性检查 |
+| 回滚未完成更新 | 按 journal + 备份回滚，fail-closed |
+
+向导中列表步骤可 `b`/`Esc` 返回；手动输入步骤输入 `b` 返回。
+
+### 下载与镜像
+- 整合包下载：自动测速选最快镜像 / 手动选镜像 / 自定义地址，支持 HTTP 代理。
+- 原版 MC：自动优先 BMCLAPI 镜像（清单/版本/客户端），不可用自动回退 Mojang 官方；`RSTC_NO_MIRROR=1` 可关闭。
+- 原版与整合包并行下载，同一行显示两条进度条。
+- 已完整下载的整合包（sha256 一致）重跑会直接复用；原版由 CmlLib 断点复用。
+- 下载中 `Ctrl+C` 取消会中止并保留现场，重跑继续复用。
+
+### 整合包来源
+- 稳定版：`releases/latest`；
+- Beta 版（内测）：包含 Pre-release；
+- 本地 zip：手动选择，不下载、不显示镜像步骤。
+- 当前 6.0 为 Beta：稳定版 5.5 基于 1.21.10，与 26.3 不兼容时更新器会自动改用 Beta；6.0 正式发布后自动走稳定版。
+
+### 安装后
+- 启动器版本列表只保留「红石镇客户端」实例与原版 26.3；多出来的 `fabric-loader-*` 目录会自动清理（被其它实例引用时保留）。
+- 安装校验输出 `INSTALL_VERIFY=PASS`；整合包 sha256 强校验，校验失败拒绝应用。
 
 ## 命令行
 
 ```powershell
-.\update_modpack.ps1 --mc-root "D:\.minecraft"    # 指定 MC 目录
-.\update_modpack.ps1 --non-interactive            # 跳过菜单
-.\update_modpack.ps1 --preserve-config            # 保留本地配置
-.\update_modpack.ps1 --help                       # 帮助
+RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>] [--beta]
+RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--dry-run] [--force] [--beta]
+RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings] [--overwrite]
+RstcUpdater.exe --check-self          # 检查更新器自身更新
+RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
+RstcUpdater.exe --rollback <游戏目录> --instance <实例名>
+RstcUpdater.exe                       # 无参数：交互菜单
 ```
 
-## 说明
+测试/自动化辅助：`--menu-script <脚本>`、`--self-update-apply`。
 
-- 自动备份 `options.txt`、`servers.dat` 及自定义 config
-- 内置多个下载镜像，自动测速选最快
-- 更新日志保存在 `update_log_*.txt`
+## 开发
 
-## v5（开发中）
+- .NET Framework 4.8 控制台程序，用 .NET SDK 8 构建；依赖 CmlLib.Core、Spectre.Console、System.Text.Json（见 `packages.lock.json`）。
+- 构建：`dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release`
+- 测试：`scripts/v1/smoke.ps1`（32 断言）、`menu-smoke.ps1`（12）、`language-smoke.ps1`（12）、`scripts/spike/run-provision-0-2.ps1`
+- 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`；验收指引：`docs/验收指引.md`；发布清单：`docs/发布检查清单.md`；发布说明：`docs/更新说明-v5.0.0.md`
+- 证据原件：`evidence/`（本地保留，不入库）
+- 玩家真实目录只读，测试只用独立临时目录。
 
-`src/RstcUpdater/` 是 C# 控制台重写版（.NET Framework 4.8）。**V1 实现完成，经 11 轮独立审查 PASS（`evidence/v1/review/`，最终 `20261112_2225`），代码冻结 `11a4a19`；A1b 双启动器与 PCL2 中文启动均已实测（`evidence/acceptance/`），对外状态 `demo-awaiting-user`**：真实 6.0/v5 Release 路径待发布后实测；阶段 0 的 0-6 为 PARTIAL（并行未量化）、0-7 待 v5 Release。
+## v4 旧版
 
-```powershell
-dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release   # 需要 .NET SDK 8；net48 引用程序集由 NuGet 提供
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --probe    # 拉取 26.3 元数据探针
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install <空目录> [--reuse]   # 安装原版 26.3（不下载 Java）
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --provision <游戏目录> [--reuse] [--mod-src <mods>]   # 阶段 0-2：Fabric + A2/A1/B 实例
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --fetch-pack <游戏目录> --release-json <json> --instance <名>   # 下载+校验+铺开真实包
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --pack <游戏目录> --zip <包> --instance <名> [--update] [--dry-run] [--keep a,b]
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--dry-run] [--force]   # 整包更新
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings]   # 迁移玩家数据
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --check-self   # 检查更新器自身更新
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --menu-script <脚本>   # 用脚本输入驱动菜单（测试/自动化）
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe --status [游戏目录]   # 状态面板 + 关键文件检查（非交互）
-src\RstcUpdater\bin\Release\net48\RstcUpdater.exe   # 无参数：交互菜单
-```
-
-- 开发文档：`requirements/RSTC-Updater-5.0-开发文档.md`
-- 证据脚本：`scripts/spike/`（需要 PowerShell 7+）
-- 证据原件：`evidence/stage0/`（本地保留，不入库）
+`updater/` 保留 v4.11 的 `update_modpack.ps1` / `update_modpack.bat`，只读参考，不再更新。
