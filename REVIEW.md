@@ -79,4 +79,6 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 
 - R9 复审在 `27fd895` 上复现：越界 zip 经预览失败后 `.rstc-tmp` 仍残留（ZipArchive 句柄在 `BuildPlan` 抛错时未释放，删除被占用而静默失败）→ R8-1 实际未关闭。
 - 修复：`BuildPlan` 打开句柄即负责释放（抛错时 Dispose）、`Preview` finally 释放、`DeleteFileQuiet` 增加重试；复现脚本（伪造 release 缓存 + 本地 HTTP + 越界 zip + 无效 token）实测 exit 7、实例未动、`zip_left=False`。
-- 证据：`evidence/v1/review/20261112_2139/`（R9 报告）+ 本轮复现输出（见对话/R10 报告）。
+- 证据：`evidence/v1/review/20261112_2153/REVIEW_REPORT.md`（R9 报告）+ 本节复现输出。
+
+- R9 复审结论：`27fd895` **FAIL**（R8-1 未真关闭）；`086e554` 修复后 R9 在固定 commit 独立重放确认 **R8-1 closed**，建议 V1 代码冻结于 `086e554`。
