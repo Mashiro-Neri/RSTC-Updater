@@ -302,6 +302,22 @@ namespace RstcUpdater
             using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(100)))
             using (var cts = new CancellationTokenSource())
             {
+                int testCancelMs;
+                if (int.TryParse(Environment.GetEnvironmentVariable("RSTC_TEST_CANCEL_AFTER_MS"), out testCancelMs) &&
+                    testCancelMs > 0)
+                {
+                    new System.Threading.Timer(_ =>
+                    {
+                        try
+                        {
+                            cts.Cancel();
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                        }
+                    }, null, testCancelMs, System.Threading.Timeout.Infinite);
+                }
+
                 ConsoleCancelEventHandler cancelHandler = (s, e) =>
                 {
                     try
