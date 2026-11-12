@@ -77,6 +77,8 @@ namespace RstcUpdater
         private sealed class Line
         {
             public readonly List<Segment> Segments = new List<Segment>();
+            public int FixedBorderColumn = -1;
+            public string FixedBorderText = "|";
         }
 
         private static Segment Text(string text, ConsoleColor foreground)
@@ -171,29 +173,29 @@ namespace RstcUpdater
             lastHeight = windowHeight;
             int width = Math.Max(40, Math.Min(96, windowWidth - 1));
             bool full = windowHeight >= 30;
+            int boxWidth = Math.Min(width, 58);
+            int boxLeft = 2;
 
             var lines = new List<Line>();
-            string inner = new string('-', width - 2);
-
-            lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
 
             string left = " RSTC // UPDATER";
             string right = version + " | " + channel + " ";
-            string header = Pad(left + new string(' ', Math.Max(1, width - 2 - DisplayWidth(left) - DisplayWidth(right))) + right, width - 2);
-            lines.Add(One(Text("|", ConsoleColor.Red), Text(header, ConsoleColor.White), Text("|", ConsoleColor.Red)));
+            lines.Add(One(Text(left + new string(' ', Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right))) + right,
+                ConsoleColor.DarkGray)));
 
+            string border = new string('-', boxWidth - 2);
+            lines.Add(One(Text(new string(' ', boxLeft) + "+" + border + "+", ConsoleColor.Red)));
             if (full)
             {
-                lines.Add(One(Text("|" + new string(' ', width - 2) + "|", ConsoleColor.Red)));
                 foreach (string logo in Logo)
                 {
-                    lines.Add(One(Text("|", ConsoleColor.Red), Text(Center(logo, width - 2), ConsoleColor.Red), Text("|", ConsoleColor.Red)));
+                    lines.Add(BoxLine(boxLeft, boxWidth, Center(logo, boxWidth - 2), ConsoleColor.Red));
                 }
             }
 
-            lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
-            lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.Red)));
-            lines.Add(One(Text(Center("Minecraft 26.3 | Fabric 0.20.1", width), ConsoleColor.DarkGray)));
+            lines.Add(BoxLine(boxLeft, boxWidth, Center("红石镇客户端更新器", boxWidth - 2), ConsoleColor.Red));
+            lines.Add(BoxLine(boxLeft, boxWidth, Center(version + " | " + channel, boxWidth - 2), ConsoleColor.DarkGray));
+            lines.Add(One(Text(new string(' ', boxLeft) + "+" + border + "+", ConsoleColor.Red)));
             lines.Add(One(Text("", ConsoleColor.Gray)));
 
             foreach (var row in status)
@@ -231,6 +233,7 @@ namespace RstcUpdater
             Console.Write(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
             for (int i = 0; i < lines.Count && i < maxLines; i++)
             {
+                SetCursor(0, i);
                 int used = 0;
                 foreach (var segment in lines[i].Segments)
                 {
@@ -260,15 +263,38 @@ namespace RstcUpdater
                     Console.ResetColor();
                 }
 
-                Console.Write("\x1b[K");
-                if (i < lines.Count - 1 && i < maxLines - 1)
+                if (lines[i].FixedBorderColumn >= 0)
                 {
-                    Console.Write("\n");
+                    SetCursor(lines[i].FixedBorderColumn, i);
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Write(lines[i].FixedBorderText);
+                    Console.ResetColor();
                 }
+
+                Console.Write("\x1b[K");
             }
 
             Console.Write("\x1b[0J");
             Console.ResetColor();
+        }
+
+        private static Line BoxLine(int boxLeft, int boxWidth, string content, ConsoleColor color)
+        {
+            Line line = One(Text(new string(' ', boxLeft) + "|", ConsoleColor.Red), Text(content, color));
+            line.FixedBorderColumn = boxLeft + boxWidth - 1;
+            line.FixedBorderText = "|";
+            return line;
+        }
+
+        private static void SetCursor(int left, int top)
+        {
+            try
+            {
+                Console.SetCursorPosition(Math.Max(0, left), Math.Max(0, top));
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static int SafeWindowWidth()
