@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -8,9 +7,9 @@ using System.Threading;
 namespace RstcUpdater
 {
     /// <summary>
-    /// 终端 TUI：致敬 v4.11 的红色边框风格（黑色底、亮红 RST 标志与细边框），方向键菜单。
-    /// 颜色用 ConsoleColor（Red 对应 #E74856，和旧版一致的亮红），VT 只负责光标/清屏。
-    /// 每帧整屏重绘并监听窗口尺寸变化，缩放/拖动后自动恢复排版。
+    /// 终端 TUI：完全复刻 v4.11 的视觉（红色 ╔═╗ 方框 + ANSI Shadow RST 标志 + 红字标题；
+    /// 菜单选中行 White on DarkCyan + ▶；底部 ↑↓ 移动 Enter 确认）。
+    /// 负责整屏重绘与窗口尺寸监听。
     /// </summary>
     internal static class Tui
     {
@@ -65,39 +64,6 @@ namespace RstcUpdater
             SetConsoleMode(handle, _oldMode);
         }
 
-        private struct Segment
-        {
-            public string Text;
-            public ConsoleColor Foreground;
-            public ConsoleColor Background;
-            public bool HasBackground;
-            public bool PadToWidth;
-        }
-
-        private sealed class Line
-        {
-            public readonly List<Segment> Segments = new List<Segment>();
-            public int FixedBorderColumn = -1;
-            public string FixedBorderText = "|";
-        }
-
-        private static Segment Text(string text, ConsoleColor foreground)
-        {
-            return new Segment { Text = text, Foreground = foreground, HasBackground = false };
-        }
-
-        private static Segment Filled(string text, ConsoleColor foreground, ConsoleColor background)
-        {
-            return new Segment { Text = text, Foreground = foreground, Background = background, HasBackground = true, PadToWidth = true };
-        }
-
-        private static Line One(params Segment[] segments)
-        {
-            var line = new Line();
-            line.Segments.AddRange(segments);
-            return line;
-        }
-
         public static int Menu(
             IReadOnlyList<string> items,
             IReadOnlyList<string> descriptions,
@@ -109,13 +75,13 @@ namespace RstcUpdater
             int lastWidth = -1;
             int lastHeight = -1;
 
-            Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, true);
+            Draw(selected, items, descriptions, status, version, ref lastWidth, ref lastHeight, true);
 
             while (true)
             {
                 if (Console.WindowWidth != lastWidth || Console.WindowHeight != lastHeight)
                 {
-                    Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, true);
+                    Draw(selected, items, descriptions, status, version, ref lastWidth, ref lastHeight, true);
                 }
 
                 if (Console.KeyAvailable)
@@ -124,12 +90,12 @@ namespace RstcUpdater
                     if (key.Key == ConsoleKey.UpArrow)
                     {
                         selected = (selected - 1 + items.Count) % items.Count;
-                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
+                        Draw(selected, items, descriptions, status, version, ref lastWidth, ref lastHeight, false);
                     }
                     else if (key.Key == ConsoleKey.DownArrow)
                     {
                         selected = (selected + 1) % items.Count;
-                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
+                        Draw(selected, items, descriptions, status, version, ref lastWidth, ref lastHeight, false);
                     }
                     else if (key.Key == ConsoleKey.Enter)
                     {
@@ -146,7 +112,7 @@ namespace RstcUpdater
                     else if (key.KeyChar >= '1' && key.KeyChar <= '9' && key.KeyChar - '1' < items.Count)
                     {
                         selected = key.KeyChar - '1';
-                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
+                        Draw(selected, items, descriptions, status, version, ref lastWidth, ref lastHeight, false);
                     }
                 }
                 else
@@ -162,7 +128,6 @@ namespace RstcUpdater
             IReadOnlyList<string> descriptions,
             IReadOnlyList<(string Label, ConsoleColor Dot, string Value)> status,
             string version,
-            string channel,
             ref int lastWidth,
             ref int lastHeight,
             bool clearFirst)
@@ -171,119 +136,83 @@ namespace RstcUpdater
             int windowHeight = SafeWindowHeight();
             lastWidth = windowWidth;
             lastHeight = windowHeight;
-            int width = Math.Max(40, Math.Min(96, windowWidth - 1));
-            bool full = windowHeight >= 30;
-            int boxWidth = Math.Min(width, 58);
-            int boxLeft = 2;
+            bool compact = windowHeight < 24;
 
-            var lines = new List<Line>();
+            Console.ResetColor();
+            Console.Write(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
 
-            string left = " RSTC // UPDATER";
-            string right = version + " | " + channel + " ";
-            lines.Add(One(Text(left + new string(' ', Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right))) + right,
-                ConsoleColor.DarkGray)));
+            int row = 0;
+            const int inner = 50;
 
-            string border = new string('-', boxWidth - 2);
-            lines.Add(One(Text(new string(' ', boxLeft) + "+" + border + "+", ConsoleColor.Red)));
-            if (full)
+            WriteLine(ref row, "  ╔" + new string('═', inner) + "╗", ConsoleColor.Red);
+            WriteLine(ref row, "  ║" + new string(' ', inner) + "║", ConsoleColor.Red);
+
+            if (!compact)
             {
-                foreach (string logo in Logo)
+                foreach (string art in BannerArt)
                 {
-                    lines.Add(BoxLine(boxLeft, boxWidth, Center(logo, boxWidth - 2), ConsoleColor.Red));
+                    string padRight = new string(' ', Math.Max(0, inner - 4 - art.Length));
+                    WriteLine(ref row, "  ║" + new string(' ', 4) + art + padRight + "║", ConsoleColor.Red);
                 }
+
+                WriteLine(ref row, "  ║" + new string(' ', inner) + "║", ConsoleColor.Red);
             }
 
-            lines.Add(BoxLine(boxLeft, boxWidth, Center("红石镇客户端更新器", boxWidth - 2), ConsoleColor.Red));
-            lines.Add(BoxLine(boxLeft, boxWidth, Center(version + " | " + channel, boxWidth - 2), ConsoleColor.DarkGray));
-            lines.Add(One(Text(new string(' ', boxLeft) + "+" + border + "+", ConsoleColor.Red)));
-            lines.Add(One(Text("", ConsoleColor.Gray)));
+            string title = "红石镇客户端更新器 " + version;
+            int titleWidth = DisplayWidth(title);
+            int padLeft = Math.Max(0, (inner - titleWidth) / 2);
+            int padRightTitle = Math.Max(0, inner - titleWidth - padLeft);
+            WriteLine(ref row, "  ║" + new string(' ', padLeft) + title + new string(' ', padRightTitle) + "║", ConsoleColor.Red);
+            WriteLine(ref row, "  ║" + new string(' ', inner) + "║", ConsoleColor.Red);
+            WriteLine(ref row, "  ╚" + new string('═', inner) + "╝", ConsoleColor.Red);
+            WriteLine(ref row, "", ConsoleColor.Gray);
 
-            foreach (var row in status)
+            // 状态：旧版主界面没有，保留一行精简信息，不破坏旧版观感
+            if (status != null && status.Count >= 2)
             {
-                string label = Pad(row.Label, 10);
-                string value = Fit(row.Value, Math.Max(10, width - 16));
-                lines.Add(One(
-                    Text(" " + label + " ", ConsoleColor.DarkGray),
-                    Text("*", row.Dot),
-                    Text(" " + value, ConsoleColor.Gray)));
+                WriteLine(ref row, "  游戏目录  " + Fit(status[0].Value, Math.Max(20, Math.Min(70, windowWidth - 16))), ConsoleColor.DarkGray);
             }
 
-            lines.Add(One(Text("", ConsoleColor.Gray)));
-            lines.Add(One(Text("操作", ConsoleColor.Red)));
+            WriteLine(ref row, "", ConsoleColor.Gray);
+            WriteLine(ref row, "  请选择：", ConsoleColor.DarkGray);
+
             for (int i = 0; i < items.Count; i++)
             {
-                string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
                 if (i == selected)
                 {
-                    string text = "  > " + Pad(items[i], 16) + " " + desc;
-                    lines.Add(One(Filled(text, ConsoleColor.White, ConsoleColor.DarkRed)));
+                    WriteLine(ref row, "  ▶ " + items[i], ConsoleColor.White, ConsoleColor.DarkCyan);
                 }
                 else
                 {
-                    lines.Add(One(
-                        Text("    " + Pad(items[i], 16), ConsoleColor.Gray),
-                        Text("  " + desc, ConsoleColor.DarkGray)));
+                    WriteLine(ref row, "    " + items[i], ConsoleColor.Gray);
                 }
             }
 
-            lines.Add(One(Text("  ^ v 移动    Enter 确认    Ctrl+C 退出", ConsoleColor.DarkGray)));
+            WriteLine(ref row, "  ↑↓ 移动  Enter 确认", ConsoleColor.DarkGray);
 
-            int maxLines = Math.Max(6, windowHeight - 1);
-            Console.ResetColor();
-            Console.Write(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
-            for (int i = 0; i < lines.Count && i < maxLines; i++)
-            {
-                SetCursor(0, i);
-                int used = 0;
-                foreach (var segment in lines[i].Segments)
-                {
-                    string text = segment.Text;
-                    if (segment.HasBackground)
-                    {
-                        int pad = width - used - DisplayWidth(text);
-                        if (pad > 0)
-                        {
-                            text += new string(' ', pad);
-                        }
-                    }
-
-                    Console.ForegroundColor = segment.Foreground;
-                    if (segment.HasBackground)
-                    {
-                        Console.BackgroundColor = segment.Background;
-                    }
-                    else
-                    {
-                        Console.ResetColor();
-                        Console.ForegroundColor = segment.Foreground;
-                    }
-
-                    Console.Write(text);
-                    used += DisplayWidth(text);
-                    Console.ResetColor();
-                }
-
-                if (lines[i].FixedBorderColumn >= 0)
-                {
-                    SetCursor(lines[i].FixedBorderColumn, i);
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.Write(lines[i].FixedBorderText);
-                    Console.ResetColor();
-                }
-
-                Console.Write("\x1b[K");
-            }
-
+            SetCursor(0, Math.Min(row, Math.Max(0, windowHeight - 1)));
             Console.Write("\x1b[0J");
             Console.ResetColor();
         }
 
-        private static Line BoxLine(int boxLeft, int boxWidth, string content, ConsoleColor color)
+        private static void WriteLine(ref int row, string text, ConsoleColor foreground, ConsoleColor? background = null)
         {
-            Line line = One(Text(new string(' ', boxLeft) + "|", ConsoleColor.Red), Text(content, color));
-            line.FixedBorderColumn = boxLeft + boxWidth - 1;
-            line.FixedBorderText = "|";
-            return line;
+            SetCursor(0, row);
+            Console.ForegroundColor = foreground;
+            if (background.HasValue)
+            {
+                Console.BackgroundColor = background.Value;
+            }
+            else
+            {
+                Console.ResetColor();
+                Console.ForegroundColor = foreground;
+            }
+
+            Console.Write(text);
+            Console.ResetColor();
+            Console.Write("\x1b[K");
+            row++;
         }
 
         private static void SetCursor(int left, int top)
@@ -321,28 +250,15 @@ namespace RstcUpdater
             }
         }
 
-        private static readonly string[] Logo =
+        private static readonly string[] BannerArt =
         {
-            "██████   ██████  ████████",
-            "██   ██ ██          ██   ",
-            "██████  ██████      ██   ",
-            "██  ██        ██    ██   ",
-            "██   ██ ██████      ██   "
+            "██████╗ ███████╗████████╗",
+            "██╔══██╗██╔════╝╚══██╔══╝",
+            "██████╔╝███████╗   ██║",
+            "██╔══██╗╚════██║   ██║",
+            "██║  ██║███████║   ██║",
+            "╚═╝  ╚═╝╚══════╝   ╚═╝"
         };
-
-        private static string Center(string text, int width)
-        {
-            int textWidth = DisplayWidth(text);
-            int left = Math.Max(0, (width - textWidth) / 2);
-            int right = Math.Max(0, width - textWidth - left);
-            return new string(' ', left) + text + new string(' ', right);
-        }
-
-        private static string Pad(string text, int width)
-        {
-            int current = DisplayWidth(text);
-            return current >= width ? text : text + new string(' ', width - current);
-        }
 
         private static string Fit(string text, int maxWidth)
         {
