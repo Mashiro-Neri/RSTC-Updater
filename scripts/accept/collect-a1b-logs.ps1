@@ -37,7 +37,7 @@ foreach ($instance in $instances) {
         $logLen = (Get-Item -LiteralPath $log).Length
         $text = Get-Content -LiteralPath $log -Raw -Encoding utf8 -ErrorAction SilentlyContinue
         if ($text) {
-            $m = [regex]::Match($text, '(?i)Loaded\s+(\d+)\s+mods')
+            $m = [regex]::Match($text, '(?i)(?:Loading|Loaded)\s+(\d+)\s+mods')
             if ($m.Success) { $modsLoaded = [int]$m.Groups[1].Value }
             $crash = $text -match '(?i)Exception|crash report'
         }

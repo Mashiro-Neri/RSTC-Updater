@@ -54,3 +54,9 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - R4-N4（partial）：MultiPrompt 未匹配 token 静默忽略；HandleUnfinishedJournals 的 catch 仍会吞 FlowFailureException（仅在脚本化异常输入下可见）。
 - R4-N2/R4-N5（open）：删除清单 PageSize、SelfUpdater 其他早期 abort 的 %TEMP% 清理。
 - 未来出现 v5 自更新资产后，需把 menu-smoke 脚本输入扩为 12+ 行并补 E1/E2 实测。
+
+## 8. A1b 用户验收记录（2026-11-12）
+
+- 用户实测：`PCL2: A2=ok A1=ok B=ok；HMCL: A2=ok A1=ok B=ok`。
+- 日志（evidence/acceptance/20261112_193644/a1b/）：三实例均 Loading Minecraft 26.3 with Fabric Loader 0.20.1、Loading 7 mods、进 Render thread、Stopping!，无 Exception。
+- 结论：0-2/0-3 用户验收 PASS；V1 默认实例方案维持 A2。
