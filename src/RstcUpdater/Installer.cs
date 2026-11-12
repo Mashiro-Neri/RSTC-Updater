@@ -219,14 +219,13 @@ namespace RstcUpdater
 
         private static void PrintCompletion(string gameDir, string instanceName, string tag, string assetName)
         {
-            var table = new Table().Border(TableBorder.Rounded).Title("[green]安装完成[/]");
-            table.AddColumn("项");
-            table.AddColumn("值");
-            table.AddRow("实例", Markup.Escape(instanceName));
-            table.AddRow("路径", Markup.Escape(Path.Combine(gameDir, "versions", instanceName)));
-            table.AddRow("整合包版本", Markup.Escape(tag ?? "?"));
-            table.AddRow("资产", Markup.Escape(assetName ?? "?"));
-            AnsiConsole.Write(table);
+            Ui.Card("安装完成", new[]
+            {
+                ("实例", Markup.Escape(instanceName)),
+                ("路径", Markup.Escape(Path.Combine(gameDir, "versions", instanceName))),
+                ("整合包版本", Markup.Escape(tag ?? "?")),
+                ("资产", Markup.Escape(assetName ?? "?"))
+            });
             AnsiConsole.MarkupLine("启动方式：在 PCL2 / HMCL 里把游戏目录指向 [yellow]" + Markup.Escape(gameDir) + "[/]，");
             AnsiConsole.MarkupLine("选择实例 [yellow]" + Markup.Escape(instanceName) + "[/] 启动；若启动器未开启版本隔离，需手动开启。");
             AnsiConsole.MarkupLine("[grey]提示：版本列表里还会出现 26.3 与 " + Provisioner.FabricVersionId + "，请选上面的实例。[/]");

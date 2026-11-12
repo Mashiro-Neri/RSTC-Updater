@@ -451,18 +451,17 @@ namespace RstcUpdater
         private static void PrintPlan(PreparedUpdate prepared)
         {
             PackPlan plan = prepared.Plan;
-            var preview = new Table().Border(TableBorder.Rounded).Title("[cyan]更新计划[/]");
-            preview.AddColumn("项");
-            preview.AddColumn("值");
-            preview.AddRow("本地版本", Markup.Escape(prepared.LocalVersion ?? "?"));
-            preview.AddRow("远端版本", Markup.Escape(prepared.RemoteVersion ?? "?") +
-                                   (prepared.RemoteTag == null ? "" : "（" + Markup.Escape(prepared.RemoteTag) + "）"));
-            preview.AddRow("写入", plan.Writes.Count + "（覆盖 " + plan.Overwrites.Count + "，新建 " + plan.NewFiles.Count + "）");
-            preview.AddRow("复用", plan.Reused.ToString());
-            preview.AddRow("删除", plan.Deletes.Count.ToString());
-            preview.AddRow("保留（keep）", plan.KeptByUser.Count.ToString());
-            preview.AddRow("options/servers 冲突（保留本地）", plan.Conflicts.Count.ToString());
-            AnsiConsole.Write(preview);
+            Ui.Card("更新计划", new[]
+            {
+                ("本地版本", Markup.Escape(prepared.LocalVersion ?? "?")),
+                ("远端版本", Markup.Escape(prepared.RemoteVersion ?? "?") +
+                             (prepared.RemoteTag == null ? "" : "（" + Markup.Escape(prepared.RemoteTag) + "）")),
+                ("写入", plan.Writes.Count + "（覆盖 " + plan.Overwrites.Count + "，新建 " + plan.NewFiles.Count + "）"),
+                ("复用", plan.Reused.ToString()),
+                ("删除", plan.Deletes.Count.ToString()),
+                ("保留（keep）", plan.KeptByUser.Count.ToString()),
+                ("冲突（保留本地）", plan.Conflicts.Count.ToString())
+            });
 
             if (plan.Deletes.Count > 0)
             {

@@ -113,6 +113,19 @@ namespace RstcUpdater
             AnsiConsole.MarkupLine("  [" + Dim + "]输入编号并回车；Ctrl+C 退出[/]");
         }
 
+        /// <summary>区块卡片：红色标题行 + 固定宽度键值行（用于确认/结果页，替代 Spectre 表格）。</summary>
+        public static void Card(string title, IEnumerable<(string Label, string ValueMarkup)> rows)
+        {
+            int dashes = Math.Max(4, W - DisplayWidth(title) - 4);
+            AnsiConsole.MarkupLine("[red]▌ [/][white]" + Markup.Escape(title) + "[/] [grey]" + new string('─', dashes) + "[/]");
+            foreach (var row in rows)
+            {
+                string label = PadDisplay(row.Label, 12);
+                AnsiConsole.MarkupLine("  [grey]" + Markup.Escape(label) + "[/] " + row.ValueMarkup);
+            }
+
+            AnsiConsole.WriteLine();
+        }
         public static void Section(string title)
         {
             AnsiConsole.MarkupLine("[red]" + Markup.Escape(title) + "[/]");

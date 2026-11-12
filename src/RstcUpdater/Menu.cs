@@ -209,7 +209,7 @@ namespace RstcUpdater
         {
             var rows = new List<(string Label, ConsoleColor Dot, string Value)>();
             string instance = FindCurrentInstance(gameDir, config);
-            rows.Add(("游戏目录", ConsoleColor.DarkGray, string.IsNullOrEmpty(gameDir) ? "未定位" : gameDir));
+            rows.Add(("游戏目录", string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir) ? ConsoleColor.Yellow : ConsoleColor.Green, string.IsNullOrEmpty(gameDir) ? "未定位" : gameDir));
             rows.Add(("当前实例", string.IsNullOrEmpty(instance) ? ConsoleColor.Yellow : ConsoleColor.Green,
                 string.IsNullOrEmpty(instance) ? "未安装" : instance));
 
@@ -249,7 +249,7 @@ namespace RstcUpdater
             {
                 var asset = ReleaseClient.FindPackAsset(release);
                 string ver = ReleaseClient.VersionFromAssetName(asset?.Name) ?? "未知";
-                remote = ver + (release.IsPrerelease ? "（Pre-release）" : "");
+                remote = (ReleaseClient.BetaChannel ? "beta " : "stable ") + ver + (release.IsPrerelease ? "（Pre-release）" : "");
                 remoteColor = release.IsPrerelease ? ConsoleColor.Yellow : ConsoleColor.Green;
             }
 
@@ -549,11 +549,94 @@ namespace RstcUpdater
         {
             if (!ScriptMode)
             {
-                return AnsiConsole.Prompt(new SelectionPrompt<string>()
-                    .Title(title)
-                    .PageSize(9)
-                    .HighlightStyle(new Style(foreground: Color.White, background: Color.Maroon))
-                    .AddChoices(choices));
+                if (choices.Count == 0)
+                {
+                    return null;
+                }
+
+                if (choices.Count == 1)
+                {
+                    return choices[0];
+                }
+
+                int selected = 0;
+                int top;
+                try
+                {
+                    top = Console.CursorTop;
+                }
+                catch (Exception)
+                {
+                    return choices[0];
+                }
+
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("▌ ");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.WriteLine(title);
+                Console.ResetColor();
+
+                try
+                {
+                    while (true)
+                    {
+                        for (int i = 0; i < choices.Count; i++)
+                        {
+                            MenuSetCursor(0, top + i);
+                            if (i == selected)
+                            {
+                                Console.BackgroundColor = ConsoleColor.DarkCyan;
+                                Console.ForegroundColor = ConsoleColor.White;
+                                Console.Write("  ▶ " + choices[i]);
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Gray;
+                                Console.Write("    " + choices[i]);
+                                Console.ResetColor();
+                            }
+
+                            Console.Write("\x1b[K");
+                        }
+
+                        MenuSetCursor(0, top + choices.Count);
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.Write("  ↑↓ 移动  Enter 确认  Esc/B 返回");
+                        Console.ResetColor();
+                        Console.Write("\x1b[K");
+
+                        ConsoleKeyInfo key = Console.ReadKey(true);
+                        if (key.Key == ConsoleKey.UpArrow)
+                        {
+                            selected = (selected - 1 + choices.Count) % choices.Count;
+                        }
+                        else if (key.Key == ConsoleKey.DownArrow)
+                        {
+                            selected = (selected + 1) % choices.Count;
+                        }
+                        else if (key.Key == ConsoleKey.Enter)
+                        {
+                            Console.WriteLine();
+                            return choices[selected];
+                        }
+                        else if (key.Key == ConsoleKey.Escape || key.KeyChar == 'b' || key.KeyChar == 'B')
+                        {
+                            Console.WriteLine();
+                            return null;
+                        }
+                        else if (key.KeyChar >= '1' && key.KeyChar <= '9' && key.KeyChar - '1' < choices.Count)
+                        {
+                            Console.WriteLine();
+                            return choices[key.KeyChar - '1'];
+                        }
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    return choices[0];
+                }
             }
             string answer = NextScript(title);
             string match = choices.FirstOrDefault(c => string.Equals(c, answer, StringComparison.OrdinalIgnoreCase));
@@ -611,28 +694,113 @@ namespace RstcUpdater
         {
             if (!ScriptMode)
             {
-                return AnsiConsole.Confirm(message, defaultValue);
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("▌ ");
+                Console.ResetColor();
+                Console.Write(message + (defaultValue ? " [Y/n]" : " [y/N]") + "  (b 返回菜单): ");
+                try
+                {
+                    while (true)
+                    {
+                        string line = Console.ReadLine();
+                        if (line == null)
+                        {
+                            return false;
+                        }
+
+                        string answer = line.Trim().ToLowerInvariant();
+                        if (answer == "b" || answer == "返回")
+                        {
+                            return false;
+                        }
+
+                        if (answer.Length == 0)
+                        {
+                            return defaultValue;
+                        }
+
+                        if (answer == "y" || answer == "yes" || answer == "是" || answer == "1")
+                        {
+                            return true;
+                        }
+
+                        if (answer == "n" || answer == "no" || answer == "否" || answer == "0")
+                        {
+                            return false;
+                        }
+
+                        Console.Write("请输入 y / n（b 返回菜单）: ");
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    return defaultValue;
+                }
             }
 
-            string answer = NextScript(message).ToLowerInvariant();
-            return answer.StartsWith("y") || answer == "是" || answer == "1";
+            string scriptAnswer = NextScript(message).ToLowerInvariant();
+            return scriptAnswer.StartsWith("y") || scriptAnswer == "是" || scriptAnswer == "1";
         }
 
         private static string TextPromptInput(string message, string defaultValue, bool allowEmpty)
         {
             if (!ScriptMode)
             {
-                var prompt = new TextPrompt<string>(message).DefaultValue(defaultValue ?? "");
-                if (allowEmpty)
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("▌ ");
+                Console.ResetColor();
+                Console.Write(message);
+                if (!string.IsNullOrEmpty(defaultValue))
                 {
-                    prompt = prompt.AllowEmpty();
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.Write("（默认 " + defaultValue + "）");
+                    Console.ResetColor();
                 }
 
-                return AnsiConsole.Prompt(prompt);
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write("  [b 返回菜单]");
+                Console.ResetColor();
+                Console.Write("\n  > ");
+                try
+                {
+                    string line = Console.ReadLine();
+                    if (line == null)
+                    {
+                        return null;
+                    }
+
+                    line = line.Trim();
+                    if (line.Equals("b", StringComparison.OrdinalIgnoreCase) || line == "返回")
+                    {
+                        return null;
+                    }
+
+                    if (line.Length == 0)
+                    {
+                        return defaultValue ?? (allowEmpty ? "" : defaultValue);
+                    }
+
+                    return line.Trim('"');
+                }
+                catch (InvalidOperationException)
+                {
+                    return defaultValue;
+                }
             }
 
             string answer = NextScript(message);
             return answer == "空" ? string.Empty : answer;
+        }
+
+        private static void MenuSetCursor(int left, int top)
+        {
+            try
+            {
+                Console.SetCursorPosition(Math.Max(0, left), Math.Max(0, top));
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static async Task<string> InstallActionAsync(string gameDir)
@@ -651,6 +819,11 @@ namespace RstcUpdater
             }
 
             string name = TextPromptInput("实例名:", "红石镇客户端", false);
+            if (name == null)
+            {
+                return gameDir;
+            }
+
             name = name.Trim();
             if (!PackApplier.IsSafeInstanceName(name))
             {
@@ -666,18 +839,22 @@ namespace RstcUpdater
 
             var javas = JavaDetector.Detect(dir);
             bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
-            var info = new Table().Border(TableBorder.Rounded).Title("[cyan]安装确认[/]");
-            info.AddColumn("项");
-            info.AddColumn("值");
-            info.AddRow("游戏目录", Markup.Escape(dir));
-            info.AddRow("实例名", Markup.Escape(name));
-            info.AddRow("预计下载", "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）");
-            info.AddRow("Java", javaOk
-                ? "[green]Java " + RequiredJava + " 已就绪[/]"
-                : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]");
-            AnsiConsole.Write(info);
+            Ui.Card("安装确认", new[]
+            {
+                ("游戏目录", Markup.Escape(dir)),
+                ("实例名", Markup.Escape(name)),
+                ("预计下载", "原版约 590 MiB + 整合包约 580 MiB（已有文件会复用）"),
+                ("Java", javaOk
+                    ? "[green]Java " + RequiredJava + " 已就绪[/]"
+                    : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")
+            });
 
             string localZipInput = TextPromptInput("本地整合包 zip（留空=在线下载最新）:", "", true);
+            if (localZipInput == null)
+            {
+                return gameDir;
+            }
+
             string localZip = string.IsNullOrWhiteSpace(localZipInput) ? null : localZipInput.Trim().Trim('"');
 
             if (!ConfirmPrompt("开始安装？", true))
@@ -725,6 +902,10 @@ namespace RstcUpdater
                     AnsiConsole.MarkupLine("[yellow]检测到实例 " + Markup.Escape(instance) +
                                            " 有未完成更新（journal=" + Markup.Escape(status) + "）[/]");
                     string pick = SelectPrompt("是否回滚到更新前状态？", new[] { "回滚", "暂时忽略" });
+            if (pick == null)
+            {
+                return;
+            }
                     if (pick == "回滚")
                     {
                         PackApplier.Rollback(gameDir, instance);
@@ -761,16 +942,15 @@ namespace RstcUpdater
             config.Save();
 
             UpdateCheck check = await UpdaterFlow.CheckAsync(gameDir, instance).ConfigureAwait(false);
-            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]更新检查[/]");
-            table.AddColumn("项");
-            table.AddColumn("值");
-            table.AddRow("实例", Markup.Escape(instance));
-            table.AddRow("本地版本", Markup.Escape(check.LocalVersion ?? "未知"));
-            table.AddRow("本地 MC", Markup.Escape(check.LocalMinecraft ?? "未知"));
-            table.AddRow("远端版本", Markup.Escape(check.RemoteVersion ?? "未知") +
-                                (check.RemoteTag == null ? "" : "（" + Markup.Escape(check.RemoteTag) + "）"));
-            table.AddRow("结论", Markup.Escape(check.Message ?? (check.UpdateAvailable ? "有新版本" : "已是最新")));
-            AnsiConsole.Write(table);
+            Ui.Card("更新检查", new[]
+            {
+                ("实例", Markup.Escape(instance)),
+                ("本地版本", Markup.Escape(check.LocalVersion ?? "未知")),
+                ("本地 MC", Markup.Escape(check.LocalMinecraft ?? "未知")),
+                ("远端版本", Markup.Escape(check.RemoteVersion ?? "未知") +
+                             (check.RemoteTag == null ? "" : "（" + Markup.Escape(check.RemoteTag) + "）")),
+                ("结论", Markup.Escape(check.Message ?? (check.UpdateAvailable ? "有新版本" : "已是最新")))
+            });
 
             if (check.LocalInstanceMissing || !check.UpdateAvailable)
             {
@@ -861,6 +1041,10 @@ namespace RstcUpdater
             }
 
             string from = SelectPrompt("选择要迁移的旧实例:", sources);
+            if (from == null)
+            {
+                return;
+            }
             var categoryNames = Migration.Categories.Select(c => c.Name).ToList();
             var chosenNames = MultiPrompt("选择要迁移的类别（类别内全选）:", categoryNames);
             var chosen = Migration.Categories.Where(c => chosenNames.Contains(c.Name)).ToList();
@@ -905,14 +1089,13 @@ namespace RstcUpdater
         private static async Task SelfUpdateActionAsync()
         {
             SelfUpdateCheck check = await SelfUpdater.CheckAsync().ConfigureAwait(false);
-            var table = new Table().Border(TableBorder.Rounded).Title("[cyan]更新器自更新[/]");
-            table.AddColumn("项");
-            table.AddColumn("值");
-            table.AddRow("当前版本", check.Current.ToString());
-            table.AddRow("远端版本", Markup.Escape(check.LatestTag ?? "未知"));
-            table.AddRow("更新资产", Markup.Escape(check.AssetName ?? "无"));
-            table.AddRow("结论", Markup.Escape(check.Message ?? ""));
-            AnsiConsole.Write(table);
+            Ui.Card("更新器自更新", new[]
+            {
+                ("当前版本", check.Current.ToString()),
+                ("远端版本", Markup.Escape(check.LatestTag ?? "未知")),
+                ("更新资产", Markup.Escape(check.AssetName ?? "无")),
+                ("结论", Markup.Escape(check.Message ?? ""))
+            });
 
             if (!check.UpdateAvailable)
             {
@@ -970,12 +1153,21 @@ namespace RstcUpdater
 
             candidates.Sort(StringComparer.OrdinalIgnoreCase);
             string instance = SelectPrompt("选择要回滚的实例:", candidates);
+            if (instance == null)
+            {
+                return;
+            }
             PackApplier.Rollback(gameDir, instance);
         }
 
         private static string Settings(AppConfig config, string currentGameDir)
         {
             string input = TextPromptInput("游戏目录（留空保持不变）:", currentGameDir ?? "", true);
+            if (input == null)
+            {
+                return currentGameDir;
+            }
+
             if (string.IsNullOrWhiteSpace(input))
             {
                 return currentGameDir;
