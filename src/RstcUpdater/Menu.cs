@@ -205,12 +205,12 @@ namespace RstcUpdater
             }
         }
 
-        private static List<(string Label, string DotColor, string Value)> BuildTuiStatus(string gameDir, AppConfig config)
+        private static List<(string Label, ConsoleColor Dot, string Value)> BuildTuiStatus(string gameDir, AppConfig config)
         {
-            var rows = new List<(string Label, string DotColor, string Value)>();
+            var rows = new List<(string Label, ConsoleColor Dot, string Value)>();
             string instance = FindCurrentInstance(gameDir, config);
-            rows.Add(("游戏目录", Tui.Grey, string.IsNullOrEmpty(gameDir) ? "未定位" : gameDir));
-            rows.Add(("当前实例", string.IsNullOrEmpty(instance) ? Tui.Yellow : Tui.Green,
+            rows.Add(("游戏目录", ConsoleColor.DarkGray, string.IsNullOrEmpty(gameDir) ? "未定位" : gameDir));
+            rows.Add(("当前实例", string.IsNullOrEmpty(instance) ? ConsoleColor.Yellow : ConsoleColor.Green,
                 string.IsNullOrEmpty(instance) ? "未安装" : instance));
 
             string pack = "未安装";
@@ -240,28 +240,28 @@ namespace RstcUpdater
                 }
             }
 
-            rows.Add(("整合包", pack == "未安装" ? Tui.Yellow : Tui.Green, pack));
+            rows.Add(("整合包", pack == "未安装" ? ConsoleColor.Yellow : ConsoleColor.Green, pack));
 
             string remote = "未查询（更新时获取）";
-            string remoteColor = Tui.Yellow;
+            ConsoleColor remoteColor = ConsoleColor.Yellow;
             var release = ReleaseClient.TryGetCached(ReleaseClient.PackRepo);
             if (release != null)
             {
                 var asset = ReleaseClient.FindPackAsset(release);
                 string ver = ReleaseClient.VersionFromAssetName(asset?.Name) ?? "未知";
                 remote = ver + (release.IsPrerelease ? "（Pre-release）" : "");
-                remoteColor = release.IsPrerelease ? Tui.Yellow : Tui.Green;
+                remoteColor = release.IsPrerelease ? ConsoleColor.Yellow : ConsoleColor.Green;
             }
 
             rows.Add(("远端", remoteColor, remote));
 
             var javas = JavaDetector.Detect(gameDir);
             bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
-            rows.Add(("运行时", javaOk ? Tui.Green : Tui.Yellow,
+            rows.Add(("运行时", javaOk ? ConsoleColor.Green : ConsoleColor.Yellow,
                 javaOk ? "Java " + RequiredJava + " 就绪" : (javas.Count == 0 ? "未检测到 Java" : "需要 " + RequiredJava + "，当前最高 " + javas[0].MajorVersion)));
 
             string isolation = "未检测到启动器配置";
-            string isoColor = Tui.Yellow;
+            ConsoleColor isoColor = ConsoleColor.Yellow;
             if (!string.IsNullOrEmpty(gameDir) && !string.IsNullOrEmpty(instance))
             {
                 string instDir = Path.Combine(gameDir, "versions", instance);
@@ -270,7 +270,7 @@ namespace RstcUpdater
                 if (pcl || hmcl)
                 {
                     isolation = pcl && hmcl ? "PCL2 + HMCL" : (pcl ? "PCL2" : "HMCL");
-                    isoColor = Tui.Green;
+                    isoColor = ConsoleColor.Green;
                 }
             }
 

@@ -7,23 +7,13 @@ using System.Threading;
 namespace RstcUpdater
 {
     /// <summary>
-    /// 真正的终端 TUI：ANSI/VT 全屏布局 + 方向键菜单。
-    /// 关键点：每帧整屏重绘、监听窗口尺寸变化并重绘，缩放/拖动后自动恢复正确排版。
+    /// 真正的终端 TUI：全屏布局 + 方向键菜单 + 缩放重绘。
+    /// 颜色走 ConsoleColor（暗红，接近 v4.11 观感），VT 只用于光标定位/清屏，避免颜色码在不同终端下的差异。
     /// </summary>
     internal static class Tui
     {
         private const int StdOutputHandle = -11;
         private const uint EnableVirtualTerminalProcessing = 0x0004;
-
-        public const string Red = "\x1b[31m";
-        private const string BrightRed = "\x1b[91m";
-        public const string Grey = "\x1b[90m";
-        public const string White = "\x1b[97m";
-        public const string Green = "\x1b[32m";
-        public const string Yellow = "\x1b[33m";
-        private const string Reset = "\x1b[0m";
-        private const string Bar = "\x1b[41m\x1b[97m";
-        private const string Sel = "\x1b[41m\x1b[97m";
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr GetStdHandle(int nStdHandle);
@@ -53,6 +43,7 @@ namespace RstcUpdater
             {
                 Console.CancelKeyPress += (sender, e) =>
                 {
+                    Console.ResetColor();
                     Console.Write("\x1b[?25h\x1b[0m\x1b[2J\x1b[H");
                 };
             }
@@ -66,36 +57,62 @@ namespace RstcUpdater
 
         public static void Leave()
         {
+            Console.ResetColor();
             Console.Write("\x1b[?25h\x1b[0m\x1b[2J\x1b[H");
             IntPtr handle = GetStdHandle(StdOutputHandle);
             SetConsoleMode(handle, _oldMode);
         }
 
-        private sealed class Snapshot
+        private struct Segment
         {
-            public int Width;
-            public int Height;
+            public string Text;
+            public ConsoleColor Foreground;
+            public ConsoleColor Background;
+            public bool HasBackground;
+            public bool PadToWidth;
         }
 
-        /// <summary>方向键菜单主循环。返回选中下标；Ctrl+C/Esc 返回 -1。</summary>
+        private sealed class Line
+        {
+            public readonly List<Segment> Segments = new List<Segment>();
+        }
+
+        private static Segment Text(string text, ConsoleColor foreground)
+        {
+            return new Segment { Text = text, Foreground = foreground, HasBackground = false };
+        }
+
+        private static Segment Filled(string text, ConsoleColor foreground, ConsoleColor background)
+        {
+            return new Segment { Text = text, Foreground = foreground, Background = background, HasBackground = true, PadToWidth = true };
+        }
+
+        private static Line One(params Segment[] segments)
+        {
+            var line = new Line();
+            line.Segments.AddRange(segments);
+            return line;
+        }
+
+        /// <summary>方向键菜单主循环。返回选中下标；Esc/Ctrl+C 返回 -1。</summary>
         public static int Menu(
             IReadOnlyList<string> items,
             IReadOnlyList<string> descriptions,
-            IReadOnlyList<(string Label, string DotColor, string Value)> status,
+            IReadOnlyList<(string Label, ConsoleColor Dot, string Value)> status,
             string version,
             string channel)
         {
             int selected = 0;
-            var snapshot = new Snapshot { Width = -1, Height = -1 };
-            Render(snapshot, selected, items, descriptions, status, version, channel, true);
+            int lastWidth = -1;
+            int lastHeight = -1;
+
+            Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, true);
 
             while (true)
             {
-                int currentWidth = Console.WindowWidth;
-                int currentHeight = Console.WindowHeight;
-                if (snapshot.Width != currentWidth || snapshot.Height != currentHeight)
+                if (Console.WindowWidth != lastWidth || Console.WindowHeight != lastHeight)
                 {
-                    Render(snapshot, selected, items, descriptions, status, version, channel, true);
+                    Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, true);
                 }
 
                 if (Console.KeyAvailable)
@@ -104,27 +121,29 @@ namespace RstcUpdater
                     if (key.Key == ConsoleKey.UpArrow)
                     {
                         selected = (selected - 1 + items.Count) % items.Count;
-                        Render(snapshot, selected, items, descriptions, status, version, channel, false);
+                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
                     }
                     else if (key.Key == ConsoleKey.DownArrow)
                     {
                         selected = (selected + 1) % items.Count;
-                        Render(snapshot, selected, items, descriptions, status, version, channel, false);
+                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
                     }
                     else if (key.Key == ConsoleKey.Enter)
                     {
+                        Console.ResetColor();
                         Console.Write("\x1b[?25h\x1b[2J\x1b[H");
                         return selected;
                     }
                     else if (key.Key == ConsoleKey.Escape)
                     {
+                        Console.ResetColor();
                         Console.Write("\x1b[?25h\x1b[2J\x1b[H");
                         return -1;
                     }
                     else if (key.KeyChar >= '1' && key.KeyChar <= '9' && key.KeyChar - '1' < items.Count)
                     {
                         selected = key.KeyChar - '1';
-                        Render(snapshot, selected, items, descriptions, status, version, channel, false);
+                        Draw(selected, items, descriptions, status, version, channel, ref lastWidth, ref lastHeight, false);
                     }
                 }
                 else
@@ -134,85 +153,123 @@ namespace RstcUpdater
             }
         }
 
-        private static void Render(
-            Snapshot snapshot,
+        private static void Draw(
             int selected,
             IReadOnlyList<string> items,
             IReadOnlyList<string> descriptions,
-            IReadOnlyList<(string Label, string DotColor, string Value)> status,
+            IReadOnlyList<(string Label, ConsoleColor Dot, string Value)> status,
             string version,
             string channel,
+            ref int lastWidth,
+            ref int lastHeight,
             bool clearFirst)
         {
-            int width = Math.Max(40, Math.Min(96, SafeWindowWidth() - 1));
-            int height = Math.Max(12, SafeWindowHeight());
-            snapshot.Width = SafeWindowWidth();
-            snapshot.Height = SafeWindowHeight();
+            int windowWidth = SafeWindowWidth();
+            int windowHeight = SafeWindowHeight();
+            lastWidth = windowWidth;
+            lastHeight = windowHeight;
+            int width = Math.Max(40, Math.Min(96, windowWidth - 1));
+            bool full = windowHeight >= 27;
 
-            var lines = new List<string>();
-            bool full = height >= 27;
+            var lines = new List<Line>();
 
             string left = " RSTC // UPDATER";
             string right = version + " · " + channel + " ";
-            lines.Add(Bar + Pad(left + new string(' ', Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right))) + right, width) + Reset);
+            int gap = Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right));
+            lines.Add(One(Filled(left + new string(' ', gap) + right, ConsoleColor.White, ConsoleColor.DarkRed)));
+            lines.Add(One(Text("", ConsoleColor.Gray)));
 
             if (full)
             {
                 foreach (string logo in Logo)
                 {
-                    lines.Add(Red + Center(logo, width) + Reset);
+                    lines.Add(One(Text(Center(logo, width), ConsoleColor.DarkRed)));
                 }
 
-                lines.Add(White + Center("红石镇客户端更新器", width) + Reset);
-                lines.Add(Grey + Center("Minecraft 26.3 · Fabric 0.20.1", width) + Reset);
+                lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.White)));
+                lines.Add(One(Text(Center("Minecraft 26.3 · Fabric 0.20.1", width), ConsoleColor.DarkGray)));
             }
             else
             {
-                lines.Add(White + Center("红石镇客户端更新器  ·  Minecraft 26.3", width) + Reset);
+                lines.Add(One(Text(Center("红石镇客户端更新器  ·  Minecraft 26.3", width), ConsoleColor.White)));
             }
 
-            lines.Add(Red + new string('─', Math.Min(width, 96)) + Reset);
-            lines.Add("");
+            lines.Add(One(Text(new string('─', width), ConsoleColor.DarkRed)));
+            lines.Add(One(Text("", ConsoleColor.Gray)));
 
             foreach (var row in status)
             {
                 string label = Pad(row.Label, 10);
                 string value = Fit(row.Value, Math.Max(10, width - 16));
-                lines.Add(" " + Grey + label + Reset + " " + row.DotColor + "●" + Reset + " " + White + value + Reset);
+                lines.Add(One(
+                    Text(" " + label + " ", ConsoleColor.DarkGray),
+                    Text("●", row.Dot),
+                    Text(" " + value, ConsoleColor.Gray)));
             }
 
-            lines.Add("");
-            lines.Add(Red + "操作" + Reset);
+            lines.Add(One(Text("", ConsoleColor.Gray)));
+            lines.Add(One(Text("操作", ConsoleColor.DarkRed)));
             for (int i = 0; i < items.Count; i++)
             {
                 string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
                 if (i == selected)
                 {
                     string text = "  ▶ " + Pad(items[i], 16) + " " + desc;
-                    lines.Add(Sel + Pad(text, width) + Reset);
+                    lines.Add(One(Filled(text, ConsoleColor.White, ConsoleColor.DarkRed)));
                 }
                 else
                 {
-                    lines.Add("    " + White + Pad(items[i], 16) + Reset + "  " + Grey + desc + Reset);
+                    lines.Add(One(
+                        Text("    " + Pad(items[i], 16), ConsoleColor.Gray),
+                        Text("  " + desc, ConsoleColor.DarkGray)));
                 }
             }
 
-            lines.Add(Grey + "  ↑ ↓ 移动    Enter 确认    Ctrl+C 退出" + Reset);
+            lines.Add(One(Text("  ↑ ↓ 移动    Enter 确认    Ctrl+C 退出", ConsoleColor.DarkGray)));
 
-            int maxLines = Math.Max(8, height - 1);
-            var builder = new StringBuilder();
-            builder.Append(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
+            int maxLines = Math.Max(6, windowHeight - 1);
+            Console.ResetColor();
+            Console.Write(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
             for (int i = 0; i < lines.Count && i < maxLines; i++)
             {
-                builder.Append(lines[i]);
+                int used = 0;
+                foreach (var segment in lines[i].Segments)
+                {
+                    string text = segment.Text;
+                    if (segment.HasBackground)
+                    {
+                        int pad = width - used - DisplayWidth(text);
+                        if (pad > 0)
+                        {
+                            text += new string(' ', pad);
+                        }
+                    }
+
+                    Console.ForegroundColor = segment.Foreground;
+                    if (segment.HasBackground)
+                    {
+                        Console.BackgroundColor = segment.Background;
+                    }
+                    else
+                    {
+                        Console.ResetColor();
+                        Console.ForegroundColor = segment.Foreground;
+                    }
+
+                    Console.Write(text);
+                    used += DisplayWidth(text);
+                    Console.ResetColor();
+                }
+
+                Console.Write("\x1b[K");
                 if (i < lines.Count - 1 && i < maxLines - 1)
                 {
-                    builder.Append('\n');
+                    Console.Write("\n");
                 }
             }
 
-            builder.Append("\x1b[0J");
-            Console.Write(builder.ToString());
+            Console.Write("\x1b[0J");
+            Console.ResetColor();
         }
 
         private static int SafeWindowWidth()
