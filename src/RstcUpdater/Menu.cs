@@ -64,59 +64,82 @@ namespace RstcUpdater
             string gameDir = ResolveGameDir(config);
             HandleUnfinishedJournals(gameDir);
 
-            if (!ScriptMode && Console.IsOutputRedirected == false && Ui.SafeWidth() < Ui.W)
+            bool interactive = !ScriptMode && !Console.IsOutputRedirected;
+            bool tui = interactive && Tui.Enter();
+            var menuChoices = new[]
             {
-                AnsiConsole.MarkupLine("[yellow]提示：当前窗口 " + Ui.SafeWidth() + " 列，小于 " + Ui.W + " 列，内容可能换行；建议拉宽窗口。[/]");
-                AnsiConsole.WriteLine();
-            }
+                "安装到新目录",
+                "更新现有实例",
+                "从旧实例迁移",
+                "检查关键文件",
+                "回滚未完成更新",
+                "检查更新器更新",
+                "设置",
+                "退出"
+            };
+            var menuDescriptions = new[]
+            {
+                "新装 26.3 + 整合包",
+                "下载最新包并应用",
+                "复制旧实例玩家数据",
+                "检查实例完整性",
+                "回滚中断的更新",
+                "检查更新器自身更新",
+                "修改游戏目录 / 实例",
+                "退出程序"
+            };
 
-            Ui.Header();
-            while (true)
+            try
             {
-                RenderStatus(gameDir, config, !ScriptMode);
-                var menuChoices = new[]
+                if (!tui)
                 {
-                    "安装到新目录",
-                    "更新现有实例",
-                    "从旧实例迁移",
-                    "检查关键文件",
-                    "回滚未完成更新",
-                    "检查更新器更新",
-                    "设置",
-                    "退出"
-                };
-                var menuDescriptions = new[]
-                {
-                    "新装 26.3 + 整合包",
-                    "下载最新包并应用",
-                    "复制旧实例玩家数据",
-                    "检查实例完整性",
-                    "回滚中断的更新",
-                    "检查更新器自身更新",
-                    "修改游戏目录 / 实例",
-                    "退出程序"
-                };
-                Ui.Menu(menuChoices, menuDescriptions);
-                string choice;
-                if (ScriptMode)
-                {
-                    choice = SelectPrompt("[grey]请选择操作[/]", menuChoices);
-                }
-                else
-                {
-                    while (true)
+                    if (interactive && Ui.SafeWidth() < Ui.W)
                     {
-                        string input = AnsiConsole.Prompt(new TextPrompt<string>("[red]输入编号[/]"));
-                        int number;
-                        if (int.TryParse(input.Trim(), out number) && number >= 1 && number <= menuChoices.Length)
+                        AnsiConsole.MarkupLine("[yellow]提示：当前窗口 " + Ui.SafeWidth() + " 列，小于 " + Ui.W + " 列，内容可能换行；建议拉宽窗口。[/]");
+                        AnsiConsole.WriteLine();
+                    }
+
+                    Ui.Header();
+                }
+
+                while (true)
+                {
+                    string choice;
+                    if (tui)
+                    {
+                        int index = Tui.Menu(menuChoices, menuDescriptions, BuildTuiStatus(gameDir, config),
+                            "v" + SelfUpdater.CurrentVersion, ReleaseClient.BetaChannel ? "BETA" : "RELEASE");
+                        if (index < 0)
                         {
-                            choice = menuChoices[number - 1];
-                            break;
+                            return 0;
                         }
 
-                        AnsiConsole.MarkupLine("[yellow]请输入 1-" + menuChoices.Length + " 之间的编号[/]");
+                        choice = menuChoices[index];
                     }
-                }
+                    else
+                    {
+                        RenderStatus(gameDir, config, !ScriptMode);
+                        Ui.Menu(menuChoices, menuDescriptions);
+                        if (ScriptMode)
+                        {
+                            choice = SelectPrompt("[grey]请选择操作[/]", menuChoices);
+                        }
+                        else
+                        {
+                            while (true)
+                            {
+                                string input = AnsiConsole.Prompt(new TextPrompt<string>("[red]输入编号[/]"));
+                                int number;
+                                if (int.TryParse(input.Trim(), out number) && number >= 1 && number <= menuChoices.Length)
+                                {
+                                    choice = menuChoices[number - 1];
+                                    break;
+                                }
+
+                                AnsiConsole.MarkupLine("[yellow]请输入 1-" + menuChoices.Length + " 之间的编号[/]");
+                            }
+                        }
+                    }
                 try
                 {
                     switch (choice)
@@ -172,6 +195,87 @@ namespace RstcUpdater
                     }
                 }
             }
+            }
+            finally
+            {
+                if (tui)
+                {
+                    Tui.Leave();
+                }
+            }
+        }
+
+        private static List<(string Label, string DotColor, string Value)> BuildTuiStatus(string gameDir, AppConfig config)
+        {
+            var rows = new List<(string Label, string DotColor, string Value)>();
+            string instance = FindCurrentInstance(gameDir, config);
+            rows.Add(("游戏目录", Tui.Grey, string.IsNullOrEmpty(gameDir) ? "未定位" : gameDir));
+            rows.Add(("当前实例", string.IsNullOrEmpty(instance) ? Tui.Yellow : Tui.Green,
+                string.IsNullOrEmpty(instance) ? "未安装" : instance));
+
+            string pack = "未安装";
+            if (!string.IsNullOrEmpty(gameDir) && !string.IsNullOrEmpty(instance))
+            {
+                try
+                {
+                    string index = Path.Combine(gameDir, "versions", instance, "modrinth.index.json");
+                    string tag = Path.Combine(gameDir, "versions", instance, "RSTC_version.txt");
+                    if (File.Exists(index))
+                    {
+                        var root = JsonNode.Parse(File.ReadAllText(index, Encoding.UTF8)) as JsonObject;
+                        string packVer = root?["versionId"]?.GetValue<string>();
+                        string mc = root?["dependencies"]?["minecraft"]?.GetValue<string>();
+                        if (!string.IsNullOrEmpty(packVer))
+                        {
+                            pack = packVer + (string.IsNullOrEmpty(mc) ? "" : " / MC " + mc);
+                        }
+                    }
+                    else if (File.Exists(tag))
+                    {
+                        pack = File.ReadAllText(tag, Encoding.UTF8).Trim();
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            rows.Add(("整合包", pack == "未安装" ? Tui.Yellow : Tui.Green, pack));
+
+            string remote = "未查询（更新时获取）";
+            string remoteColor = Tui.Yellow;
+            var release = ReleaseClient.TryGetCached(ReleaseClient.PackRepo);
+            if (release != null)
+            {
+                var asset = ReleaseClient.FindPackAsset(release);
+                string ver = ReleaseClient.VersionFromAssetName(asset?.Name) ?? "未知";
+                remote = ver + (release.IsPrerelease ? "（Pre-release）" : "");
+                remoteColor = release.IsPrerelease ? Tui.Yellow : Tui.Green;
+            }
+
+            rows.Add(("远端", remoteColor, remote));
+
+            var javas = JavaDetector.Detect(gameDir);
+            bool javaOk = javas.Any(j => j.MajorVersion >= RequiredJava);
+            rows.Add(("运行时", javaOk ? Tui.Green : Tui.Yellow,
+                javaOk ? "Java " + RequiredJava + " 就绪" : (javas.Count == 0 ? "未检测到 Java" : "需要 " + RequiredJava + "，当前最高 " + javas[0].MajorVersion)));
+
+            string isolation = "未检测到启动器配置";
+            string isoColor = Tui.Yellow;
+            if (!string.IsNullOrEmpty(gameDir) && !string.IsNullOrEmpty(instance))
+            {
+                string instDir = Path.Combine(gameDir, "versions", instance);
+                bool pcl = File.Exists(Path.Combine(instDir, "PCL", "Setup.ini"));
+                bool hmcl = File.Exists(Path.Combine(instDir, "hmclversion.cfg"));
+                if (pcl || hmcl)
+                {
+                    isolation = pcl && hmcl ? "PCL2 + HMCL" : (pcl ? "PCL2" : "HMCL");
+                    isoColor = Tui.Green;
+                }
+            }
+
+            rows.Add(("启动器隔离", isoColor, isolation));
+            return rows;
         }
 
         /// <summary>非交互状态输出（供测试/证据使用）。</summary>
