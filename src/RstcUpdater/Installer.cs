@@ -158,6 +158,8 @@ namespace RstcUpdater
                 return 7;
             }
 
+            Provisioner.EnsureLanguageCompatibility(gameDir, instanceName);
+
             // 5) 应用整合包
             int apply = PackApplier.Run(new PackApplier.PackOptions
             {

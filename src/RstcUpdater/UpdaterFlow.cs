@@ -383,6 +383,7 @@ namespace RstcUpdater
             CleanupZip(prepared);
             if (code == 0)
             {
+                Provisioner.EnsureLanguageCompatibility(prepared.GameDir, prepared.Instance);
                 AnsiConsole.MarkupLine("[green]更新完成[/] 版本 " + Markup.Escape(prepared.LocalVersion ?? "?") +
                                        " → " + Markup.Escape(prepared.RemoteVersion ?? "?"));
             }

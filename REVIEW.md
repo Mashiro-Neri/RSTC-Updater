@@ -82,3 +82,9 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 证据：`evidence/v1/review/20261112_2153/REVIEW_REPORT.md`（R9 报告）+ 本节复现输出。
 
 - R9 复审结论：`27fd895` **FAIL**（R8-1 未真关闭）；`086e554` 修复后 R9 在固定 commit 独立重放确认 **R8-1 closed**，建议 V1 代码冻结于 `086e554`。
+
+## 12. PCL2 语言 quirk 真正修复（2026-11-12，第 11 轮待复审）
+
+- 之前 `State:9` 预写 Setup.ini 的方案**未被证实有效**（用户实测仍英文），根因在 PCL `GetVanillaName` 的 `jar` 优先级。
+- 修复：实例 json `clientVersion=26.3` + 空 `saves` 目录 + 更新时自动补（备份 `.rstc-bak`）；用户实测中文。
+- 代码 commit 见 git log；需第 11 轮复审确认无回归后冻结。

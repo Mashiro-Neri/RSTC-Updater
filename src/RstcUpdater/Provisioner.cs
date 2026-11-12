@@ -209,6 +209,7 @@ namespace RstcUpdater
 
                 Directory.CreateDirectory(Path.Combine(dir, "mods"));
                 Directory.CreateDirectory(Path.Combine(dir, "config"));
+                Directory.CreateDirectory(Path.Combine(dir, "saves"));
                 WriteLauncherConfigs(dir, instanceName, variant, vanilla["releaseTime"]?.GetValue<string>());
                 return true;
             }
@@ -216,6 +217,41 @@ namespace RstcUpdater
             {
                 Console.Error.WriteLine("创建实例失败: " + ex.GetType().Name + ": " + ex.Message);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 兼容修补：给实例 json 补 clientVersion（PCL 识别原版版本号用；缺了会把语言写成 zh_CN 导致英文），
+        /// 并确保 saves 目录存在（PCL 判断“整合包自带 options”的分支）。已存在则不覆盖。
+        /// </summary>
+        public static void EnsureLanguageCompatibility(string gameDir, string instanceName)
+        {
+            try
+            {
+                string dir = Path.Combine(gameDir, "versions", instanceName);
+                if (!Directory.Exists(dir))
+                {
+                    return;
+                }
+
+                string jsonPath = Path.Combine(dir, instanceName + ".json");
+                if (File.Exists(jsonPath))
+                {
+                    var node = JsonNode.Parse(File.ReadAllText(jsonPath, Encoding.UTF8)) as JsonObject;
+                    if (node != null && node["clientVersion"] == null)
+                    {
+                        File.Copy(jsonPath, jsonPath + ".rstc-bak", true);
+                        node["clientVersion"] = TargetVersion;
+                        File.WriteAllText(jsonPath, node.ToJsonString(), new UTF8Encoding(false));
+                        Console.WriteLine("已为实例补 clientVersion=" + TargetVersion + "（语言兼容）");
+                    }
+                }
+
+                Directory.CreateDirectory(Path.Combine(dir, "saves"));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("语言兼容修补失败（不影响安装/更新）: " + ex.GetType().Name + ": " + ex.Message);
             }
         }
 
@@ -307,6 +343,7 @@ namespace RstcUpdater
                 {
                     ["id"] = name,
                     ["inheritsFrom"] = TargetVersion,
+                    ["clientVersion"] = TargetVersion,
                     ["type"] = "release",
                     ["mainClass"] = fabricMainClass,
                     ["releaseTime"] = vanilla["releaseTime"]?.GetValue<string>(),
@@ -335,6 +372,9 @@ namespace RstcUpdater
             node["id"] = name;
             node["type"] = "release";
             node["mainClass"] = fabricMainClass;
+            // PCL 通过 clientVersion 识别原版版本号（优先于 jar/inheritsFrom）；缺失会被判定为未知版本，
+            // 进而把语言码强制大写 zh_CN，导致 26.3 界面回退英文。
+            node["clientVersion"] = TargetVersion;
             node["jar"] = variant == "A2" ? name : TargetVersion;
             node["libraries"] = MergeLibraries(vanilla["libraries"] as JsonArray, fabricLibs);
 
