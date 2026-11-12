@@ -105,6 +105,12 @@ namespace RstcUpdater
 
             if (host == "piston-meta.mojang.com")
             {
+                if (path.EndsWith("version_manifest_v2.json", StringComparison.OrdinalIgnoreCase) ||
+                    path.EndsWith("version_manifest.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new Uri(Bmcl + "/mc/game/version_manifest_v2.json");
+                }
+
                 if (path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
                     string name = Path.GetFileNameWithoutExtension(path);
@@ -126,11 +132,6 @@ namespace RstcUpdater
                 }
 
                 return null;
-            }
-
-            if (host == "libraries.minecraft.net")
-            {
-                return new Uri(Bmcl + "/maven" + path);
             }
 
             return null;

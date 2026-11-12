@@ -10,8 +10,9 @@ namespace RstcUpdater
         /// <summary>形如 http://127.0.0.1:7890；空表示直连。</summary>
         public static string ProxyUrl;
 
-        /// <summary>MC 原版是否优先走 BMCLAPI 镜像（失败自动回退官方）。</summary>
-        public static bool UseMirror = true;
+        /// <summary>MC 原版是否优先走 BMCLAPI 镜像（失败自动回退官方）；RSTC_NO_MIRROR=1 可关闭。</summary>
+        public static bool UseMirror = Environment.GetEnvironmentVariable("RSTC_NO_MIRROR") != "1" &&
+                                        Environment.GetEnvironmentVariable("RSTC_NO_MIRROR") != "true";
 
         public static HttpClient CreateHttpClient(TimeSpan timeout)
         {

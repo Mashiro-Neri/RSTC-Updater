@@ -281,7 +281,7 @@ namespace RstcUpdater
         internal static async Task<int> InstallVanillaAsync(string gameDir)
         {
             AnsiConsole.MarkupLine("[grey]  目标: [/]" + Markup.Escape(gameDir));
-            AnsiConsole.MarkupLine("[grey]  来源: 自动镜像（BMCLAPI）优先，失败回退 Mojang 官方；下载方式里可设置代理[/]");
+            AnsiConsole.MarkupLine("[grey]  来源: 自动镜像（BMCLAPI）优先，失败回退 Mojang 官方；RSTC_NO_MIRROR=1 可关闭；下载方式里可设置代理[/]");
             AnsiConsole.MarkupLine("[grey]  说明: 不下载 Java 运行时（只检测），仅安装游戏本体/库/资源。[/]");
             if (ProgressLine.ParallelRequested)
             {
@@ -300,12 +300,21 @@ namespace RstcUpdater
             using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(100)))
             using (var cts = new CancellationTokenSource())
             {
-                Console.CancelKeyPress += (s, e) =>
+                ConsoleCancelEventHandler cancelHandler = (s, e) =>
                 {
-                    e.Cancel = true;
-                    cts.Cancel();
+                    try
+                    {
+                        e.Cancel = true;
+                        cts.Cancel();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        e.Cancel = false;
+                    }
                 };
-
+                Console.CancelKeyPress += cancelHandler;
+                try
+                {
                 MinecraftLauncher launcher;
                 try
                 {
@@ -388,6 +397,11 @@ namespace RstcUpdater
                         Console.Error.WriteLine("  内层: " + ex.InnerException.GetType().Name + ": " + ex.InnerException.Message);
                     }
                     return ExitInstallFailed;
+                }
+                }
+                finally
+                {
+                    Console.CancelKeyPress -= cancelHandler;
                 }
             }
 
@@ -485,6 +499,7 @@ namespace RstcUpdater
 
         private static int VerifyInstall(string gameDir)
         {
+            ProgressLine.Clear();
             var rows = new List<(string Label, string ValueMarkup)>();
 
             bool allOk = true;
@@ -925,6 +940,10 @@ namespace RstcUpdater
 
                     localZip = args[++i];
                 }
+                else if (args[i] == "--beta")
+                {
+                    Environment.SetEnvironmentVariable("RSTC_RELEASE_CHANNEL", "beta");
+                }
                 else
                 {
                     throw new UsageException("--install-v1 不认识的参数: " + args[i]);
@@ -1134,7 +1153,7 @@ namespace RstcUpdater
             writer.WriteLine("  RstcUpdater.exe --pack <游戏目录> --zip <整合包> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--tag <Tag>] [--dry-run]");
             writer.WriteLine("  RstcUpdater.exe --fetch-pack <游戏目录> --release-json <文件> --instance <实例名> [--update] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--asset-name <名>] [--keep-zip]");
             writer.WriteLine("  RstcUpdater.exe --rollback <游戏目录> --instance <实例名>");
-            writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>]   # V1 安装流程");
+            writer.WriteLine("  RstcUpdater.exe --install-v1 <游戏目录> [--instance <实例名>] [--zip <本地包>] [--beta]   # V1 安装流程");
             writer.WriteLine("  RstcUpdater.exe --update-v1 <游戏目录> --instance <实例名> [--zip <本地包>] [--keep a,b] [--options keep|pack] [--servers keep|pack] [--dry-run] [--force]");
             writer.WriteLine("  RstcUpdater.exe --migrate-v1 <游戏目录> --from <源实例> --to <目标实例> [--categories saves,screenshots,maps,dh,settings] [--overwrite]");
             writer.WriteLine("  RstcUpdater.exe --check-self   # 检查更新器自身更新");

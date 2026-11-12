@@ -108,6 +108,22 @@ namespace RstcUpdater
 
                 if (code != 0)
                 {
+                    if (packTask != null)
+                    {
+                        PackFetcher.AbortRequested = true;
+                        try
+                        {
+                            await packTask.ConfigureAwait(false);
+                        }
+                        catch (Exception)
+                        {
+                        }
+
+                        PackFetcher.AbortRequested = false;
+                    }
+
+                    PackFetcher.SuppressProgress = false;
+                    ProgressLine.AbortParallel();
                     Console.Error.WriteLine("原版 26.3 安装失败（已重试 3 次），已中止");
                     return code;
                 }
@@ -275,15 +291,28 @@ namespace RstcUpdater
         /// <summary>等待后台整合包下载，并在等待期间显示进度（原版下载完成后）。</summary>
         private static async Task AwaitPackDownloadAsync(Task task)
         {
-            while (!task.IsCompleted)
+            ConsoleCancelEventHandler cancelHandler = (s, e) =>
             {
-                if (!ProgressLine.Parallel)
+                e.Cancel = true;
+                PackFetcher.AbortRequested = true;
+            };
+            Console.CancelKeyPress += cancelHandler;
+            try
+            {
+                while (!task.IsCompleted)
                 {
-                    ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
-                        PackFetcher.LastSpeed, "并行下载中");
-                }
+                    if (!ProgressLine.Parallel)
+                    {
+                        ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
+                            PackFetcher.LastSpeed, "并行下载中");
+                    }
 
-                await Task.Delay(400).ConfigureAwait(false);
+                    await Task.Delay(400).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
             }
 
             ProgressLine.Clear();
@@ -306,13 +335,15 @@ namespace RstcUpdater
             }
 
             int major = 0;
+            bool started = false;
             foreach (char c in version)
             {
                 if (char.IsDigit(c))
                 {
                     major = major * 10 + (c - '0');
+                    started = true;
                 }
-                else
+                else if (started)
                 {
                     break;
                 }
