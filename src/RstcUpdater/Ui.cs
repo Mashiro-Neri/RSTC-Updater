@@ -2,20 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Spectre.Console;
-using Spectre.Console.Rendering;
 
 namespace RstcUpdater
 {
     /// <summary>
-    /// v5 终端视觉（纯 Spectre 渲染）：红石红重型边框标题面板、状态表、方向键菜单。
-    /// 不手写光标/背景色，避免控制台渲染错位。
+    /// v5 终端视觉：固定宽度（60 列）的滚动式布局，纯文本顺序输出。
+    /// 不做全屏重绘、不用绝对光标、不依赖窗口宽度，窗口拖动/缩放不会变形。
     /// </summary>
     internal static class Ui
     {
         public const string Accent = "red";
         public const string Dim = "grey";
 
-        private const int LogoRows = 5;
+        /// <summary>内容画布宽度（显示列）。所有输出行都不超过它。</summary>
+        public const int W = 76;
 
         private static readonly string[][] Letters =
         {
@@ -50,7 +50,7 @@ namespace RstcUpdater
         private static string[] BuildLogo()
         {
             var rows = new List<string>();
-            for (int row = 0; row < LogoRows; row++)
+            for (int row = 0; row < 5; row++)
             {
                 rows.Add(string.Join(" ", Letters.Select(l => l[row])));
             }
@@ -58,60 +58,57 @@ namespace RstcUpdater
             return rows.ToArray();
         }
 
-        /// <summary>标题面板：重型红框 + 居中 RST 像素字 + 名称与版本。</summary>
-        public static void LogoPanel()
+        /// <summary>顶部标志块：只打印一次，之后作为滚动历史存在。</summary>
+        public static void Header()
         {
             string version = "v" + SelfUpdater.CurrentVersion;
-            string channel = ReleaseClient.BetaChannel ? "Beta 内测" : "正式版";
+            string channel = ReleaseClient.BetaChannel ? "BETA" : "RELEASE";
+            string barLeft = " RSTC // UPDATER";
+            string barRight = version + " · " + channel + " ";
 
-            var content = new List<IRenderable>();
+            AnsiConsole.MarkupLine("[white on red]" + Markup.Escape(PadDisplay(barLeft + new string(' ', Math.Max(1, W - DisplayWidth(barLeft) - DisplayWidth(barRight))) + barRight, W)) + "[/]");
             foreach (string line in LogoLines)
             {
-                content.Add(new Markup("[red]" + Markup.Escape(line) + "[/]"));
+                AnsiConsole.MarkupLine("[red]" + Markup.Escape(CenterDisplay(line, W)) + "[/]");
             }
 
-            content.Add(new Markup(" "));
-            content.Add(new Markup("[bold white]红石镇客户端更新器[/]"));
-            content.Add(new Markup("[grey]Minecraft 26.3 · Fabric 0.20.1[/]"));
-
-            var body = new Rows(content.ToArray());
-            var panel = new Panel(new Align(body, HorizontalAlignment.Center))
-            {
-                Border = BoxBorder.Heavy,
-                BorderStyle = new Style(foreground: Color.Red),
-                Header = new PanelHeader(" RSTC // UPDATER  ·  " + version + "  ·  " + channel + " ",
-                    Justify.Left),
-                Padding = new Padding(2, 0, 2, 0)
-            };
-            AnsiConsole.Write(panel);
+            AnsiConsole.MarkupLine("[bold white]" + Markup.Escape(CenterDisplay("红石镇客户端更新器", W)) + "[/]");
+            AnsiConsole.MarkupLine("[grey]" + Markup.Escape(CenterDisplay("Minecraft 26.3 · Fabric 0.20.1", W)) + "[/]");
+            AnsiConsole.MarkupLine("[red]" + new string('─', W) + "[/]");
             AnsiConsole.WriteLine();
         }
 
-        /// <summary>状态表（圆角红框）；compact 时隐藏表头以压缩高度。</summary>
-        public static void StatusTable(IEnumerable<(string Label, string ValueMarkup)> rows, bool compact)
+        /// <summary>状态块：固定两列排版，标签宽 12，值超宽截断。</summary>
+        public static void StatusBlock(IEnumerable<(string Label, string ValueMarkup)> rows)
         {
-            var table = new Table();
-            table.Border = TableBorder.Rounded;
-            table.BorderStyle = new Style(foreground: Color.Red);
-            if (!compact)
-            {
-                table.Title = new TableTitle("[red]状态[/]");
-            }
-
-            table.ShowHeaders = !compact;
-            table.AddColumn(new TableColumn("[grey]项目[/]").NoWrap());
-            table.AddColumn(new TableColumn("[grey]值[/]"));
+            AnsiConsole.MarkupLine("[red]状态[/]");
             foreach (var row in rows)
             {
-                table.AddRow(Markup.Escape(row.Label), row.ValueMarkup);
+                AnsiConsole.MarkupLine("  [" + Dim + "]" + Markup.Escape(PadDisplay(row.Label, 12)) + "[/] " + row.ValueMarkup);
             }
 
-            AnsiConsole.Write(table);
+            AnsiConsole.WriteLine();
+        }
+
+        /// <summary>编号菜单：动作 + 说明，编号右对齐；不重绘，窗口缩放不影响。</summary>
+        public static void Menu(IReadOnlyList<string> items, IReadOnlyList<string> descriptions = null)
+        {
+            AnsiConsole.MarkupLine("[red]操作[/]");
+            for (int i = 0; i < items.Count; i++)
+            {
+                string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
+                string number = (i + 1).ToString();
+                string name = PadDisplay(items[i], 18);
+                desc = Fit(desc, Math.Max(8, W - 24));
+                AnsiConsole.MarkupLine("  [red]" + number + "[/]) " + Markup.Escape(name) + "[" + Dim + "]" + Markup.Escape(desc) + "[/]");
+            }
+
+            AnsiConsole.MarkupLine("  [" + Dim + "]输入编号并回车；Ctrl+C 退出[/]");
         }
 
         public static void Section(string title)
         {
-            AnsiConsole.MarkupLine("[red]▌ " + Markup.Escape(title) + "[/]");
+            AnsiConsole.MarkupLine("[red]" + Markup.Escape(title) + "[/]");
         }
 
         public static void Rows(IEnumerable<(string Label, string ValueMarkup)> rows, int labelWidth = 14)
@@ -121,26 +118,6 @@ namespace RstcUpdater
                 string label = PadDisplay(row.Label, labelWidth);
                 AnsiConsole.MarkupLine("  [" + Dim + "]" + Markup.Escape(label) + "[/] " + row.ValueMarkup);
             }
-        }
-
-        /// <summary>方向键菜单（内部用 Spectre SelectionPrompt，渲染稳定）。返回选中下标。</summary>
-        public static int ArrowMenu(IReadOnlyList<string> items, IReadOnlyList<string> descriptions = null)
-        {
-            var prompt = new SelectionPrompt<string>()
-                .Title("[grey]↑ ↓ 移动    Enter 确认[/]")
-                .PageSize(9)
-                .HighlightStyle(new Style(foreground: Color.White, background: Color.Maroon))
-                .AddChoices(items);
-            string picked = AnsiConsole.Prompt(prompt);
-            for (int i = 0; i < items.Count; i++)
-            {
-                if (items[i] == picked)
-                {
-                    return i;
-                }
-            }
-
-            return 0;
         }
 
         public static string PadDisplay(string text, int width)
@@ -187,6 +164,7 @@ namespace RstcUpdater
             }
         }
 
+        /// <summary>按显示宽度截断文本（超出加 ...）。</summary>
         public static string Fit(string text, int maxWidth)
         {
             if (string.IsNullOrEmpty(text) || maxWidth <= 0)

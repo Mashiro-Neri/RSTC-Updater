@@ -64,23 +64,10 @@ namespace RstcUpdater
             string gameDir = ResolveGameDir(config);
             HandleUnfinishedJournals(gameDir);
 
-            bool interactive = !ScriptMode && !Console.IsOutputRedirected;
-            if (!interactive)
-            {
-                Ui.LogoPanel();
-            }
-
+            Ui.Header();
             while (true)
             {
-                if (interactive)
-                {
-                    AnsiConsole.Clear();
-                    Ui.LogoPanel();
-                }
-
-                RenderStatus(gameDir, config, interactive);
-                AnsiConsole.WriteLine();
-                Ui.Section("操作");
+                RenderStatus(gameDir, config, !ScriptMode);
                 var menuChoices = new[]
                 {
                     "安装到新目录",
@@ -92,6 +79,18 @@ namespace RstcUpdater
                     "设置",
                     "退出"
                 };
+                var menuDescriptions = new[]
+                {
+                    "新装 26.3 + 整合包",
+                    "下载最新包并应用",
+                    "复制旧实例玩家数据",
+                    "检查实例完整性",
+                    "回滚中断的更新",
+                    "检查更新器自身更新",
+                    "修改游戏目录 / 实例",
+                    "退出程序"
+                };
+                Ui.Menu(menuChoices, menuDescriptions);
                 string choice;
                 if (ScriptMode)
                 {
@@ -99,7 +98,18 @@ namespace RstcUpdater
                 }
                 else
                 {
-                    choice = menuChoices[Ui.ArrowMenu(menuChoices)];
+                    while (true)
+                    {
+                        string input = AnsiConsole.Prompt(new TextPrompt<string>("[red]输入编号[/]"));
+                        int number;
+                        if (int.TryParse(input.Trim(), out number) && number >= 1 && number <= menuChoices.Length)
+                        {
+                            choice = menuChoices[number - 1];
+                            break;
+                        }
+
+                        AnsiConsole.MarkupLine("[yellow]请输入 1-" + menuChoices.Length + " 之间的编号[/]");
+                    }
                 }
                 try
                 {
@@ -176,10 +186,11 @@ namespace RstcUpdater
                 }
             }
 
-            Ui.LogoPanel();
+            Ui.Header();
             RenderStatus(resolved, config);
             CheckKeyFiles(resolved);
-            return 0;        }
+            return 0;
+        }
 
         private static string ResolveGameDir(AppConfig config)
         {
@@ -249,19 +260,16 @@ namespace RstcUpdater
                 }
             }
 
-            string latest = "无法检查更新";
+            string latest = "[grey]未查询（更新时获取）[/]";
             try
             {
-                var release = GetLatestCached(compact && !ScriptMode && !Console.IsOutputRedirected);
+                var release = ReleaseClient.TryGetCached(ReleaseClient.PackRepo);
                 if (release != null)
                 {
                     var asset = ReleaseClient.FindPackAsset(release);
                     string ver = ReleaseClient.VersionFromAssetName(asset?.Name);
-                    latest = (ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "");
-                    if (release.FromCache)
-                    {
-                        latest += "[grey]（缓存 " + Markup.Escape(release.FetchedAt?.ToString("yyyy-MM-dd") ?? "-") + "）[/]";
-                    }
+                    latest = (ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "") +
+                             "[grey]（缓存）[/]";
                 }
             }
             catch (Exception)
@@ -331,37 +339,21 @@ namespace RstcUpdater
             string packChip = packVersion == "未安装"
                 ? "[yellow]未安装[/]"
                 : "[white]" + Markup.Escape(packVersion) + "[/][grey] / MC " + Markup.Escape(mcVersion) + "[/]";
-            string remoteChip = (latest.StartsWith("无法", StringComparison.Ordinal) || latest.Contains("Pre-release") ? "[yellow]●[/]" : "[green]●[/]") +
+            string remoteChip = (latest.Contains("未查询") || latest.Contains("Pre-release") ? "[yellow]●[/]" : "[green]●[/]") +
                                 " " + (ReleaseClient.BetaChannel ? "beta" : "stable") + " " + latest;
             string javaChip = (javaText.Contains("就绪") ? "[green]●[/]" : "[yellow]●[/]") + " " + javaText;
             string isoChip = (isolation.Contains("已启用隔离") && !isolation.Contains("未启用隔离") ? "[green]●[/]" : "[yellow]●[/]") + " " + isolation;
 
-            if (compact)
+            Ui.StatusBlock(new[]
             {
-                string pathText = string.IsNullOrEmpty(gameDir)
-                    ? "[yellow]未定位[/]"
-                    : Markup.Escape(Ui.Fit(gameDir, Math.Max(18, Ui.SafeWidth() - 12)));
-                Ui.StatusTable(new[]
-                {
-                    ("游戏目录", pathText),
-                    ("实例", instanceChip),
-                    ("整合包", packChip + "  " + remoteChip),
-                    ("环境", javaChip + "  " + isoChip)
-                }, true);
-                return;
-            }
-
-            Ui.StatusTable(new[]
-            {
-                ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Math.Max(30, Ui.SafeWidth() - 20)))),
+                ("游戏目录", string.IsNullOrEmpty(gameDir) ? "[yellow]未定位[/]" : Markup.Escape(Ui.Fit(gameDir, Ui.W - 14))),
                 ("当前实例", instanceChip),
                 ("整合包", packChip),
                 ("远端", remoteChip),
                 ("Java", javaChip),
                 ("启动器隔离", isoChip)
-            }, false);
+            });
         }
-
         private static void CheckKeyFiles(string gameDir)
         {
             if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))

@@ -285,6 +285,28 @@ namespace RstcUpdater
             }
         }
 
+        /// <summary>只读磁盘缓存，不发起网络请求（供菜单状态渲染使用）。</summary>
+        public static ReleaseInfo TryGetCached(string repo)
+        {
+            try
+            {
+                string path = CachePath(repo, BetaChannel);
+                if (!File.Exists(path))
+                {
+                    path = CachePath(repo, false);
+                }
+
+                if (File.Exists(path))
+                {
+                    return LoadCache(repo, path);
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return null;
+        }
         private static string CachePath(string repo, bool beta)
         {
             string safe = repo.Replace('/', '_');

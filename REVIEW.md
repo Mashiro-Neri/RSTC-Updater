@@ -131,3 +131,11 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 决策：放弃手写光标/背景色混合方案，改为**纯 Spectre 渲染**——重型红框标题面板（居中 RST 像素字）、圆角红框状态表、SelectionPrompt 方向键菜单；不再手工 SetCursorPosition/ConsoleColor，避免渲染污染。
 - 已删除 `Ui.ArrowMenu` 的手写实现（改为内部 SelectionPrompt），删除扫描线/满宽红条/徽章等易污染元素。
 - 待：冻结干净 commit → 重建 exe → 用 ConPTY 80×30/120×30 重新验收后再冻结 UI。
+
+## 19. UI 架构定稿：固定宽度滚动式布局（2026-11-12，待复审）
+
+- R13/R14 暴露的根因：Windows conhost 在窗口拖动/缩放时会重排整个屏幕缓冲区；全屏 HUD（Panel Expand、满宽边框、绝对光标、Clear+重绘）必然变形/花屏。
+- 定稿方案：**固定 76 列画布的滚动式输出**——所有行 ≤76 显示列；不用 Clear、不用绝对光标、不用满宽 Panel/Table；`RST` 像素标志+红条静态打印一次；状态块与编号菜单顺序追加；菜单改编号输入（无 LiveDisplay 重绘）。
+- 远端版本改为只读磁盘缓存（`ReleaseClient.TryGetCached`），菜单不再阻塞网络请求；`--status` 同样不联网。
+- 实测（ConCapture 读取真实控制台缓冲区，120×30）：启动 2.5s 内完整显示；模拟窗口 resize 到 100×35 后文字布局保持完整（无重排/串行）。证据：`evidence/v1/ui-layout/`。
+- 已知边界：窗口宽度 < 80 列时 76 列内容软换行（建议 ≥80 列）；方向键菜单改为编号输入（为彻底消除重绘）。
