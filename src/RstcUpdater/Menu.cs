@@ -64,6 +64,12 @@ namespace RstcUpdater
             string gameDir = ResolveGameDir(config);
             HandleUnfinishedJournals(gameDir);
 
+            if (!ScriptMode && Console.IsOutputRedirected == false && Ui.SafeWidth() < Ui.W)
+            {
+                AnsiConsole.MarkupLine("[yellow]提示：当前窗口 " + Ui.SafeWidth() + " 列，小于 " + Ui.W + " 列，内容可能换行；建议拉宽窗口。[/]");
+                AnsiConsole.WriteLine();
+            }
+
             Ui.Header();
             while (true)
             {
@@ -268,7 +274,7 @@ namespace RstcUpdater
                 {
                     var asset = ReleaseClient.FindPackAsset(release);
                     string ver = ReleaseClient.VersionFromAssetName(asset?.Name);
-                    latest = (ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "") +
+                    latest = Markup.Escape(ver ?? "未知") + (release.IsPrerelease ? "[yellow]（Pre-release）[/]" : "") +
                              "[grey]（缓存）[/]";
                 }
             }
@@ -350,7 +356,7 @@ namespace RstcUpdater
                 ("当前实例", instanceChip),
                 ("整合包", packChip),
                 ("远端", remoteChip),
-                ("Java", javaChip),
+                ("运行时", javaChip),
                 ("启动器隔离", isoChip)
             });
         }
