@@ -17,6 +17,7 @@ namespace RstcUpdater
     {
         private const string Bmcl = "https://bmclapi2.bangbang93.com";
         private static readonly string LogPath = Environment.GetEnvironmentVariable("RSTC_MIRROR_LOG");
+        private static string _lastVersion;
 
         public MirrorHttpHandler(HttpMessageHandler inner)
             : base(inner)
@@ -46,7 +47,7 @@ namespace RstcUpdater
                     {
                         if (IsVersionJson(mirror))
                         {
-                            return await RewriteVersionJsonAsync(response, Path.GetFileName(Path.GetDirectoryName(mirror.AbsolutePath))).ConfigureAwait(false);
+                            _lastVersion = Path.GetFileName(Path.GetDirectoryName(mirror.AbsolutePath));
                         }
 
                         return response;
@@ -82,22 +83,6 @@ namespace RstcUpdater
                    mirror.AbsolutePath.EndsWith("/json", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>把版本 JSON 里的 client.jar 地址改写到 BMCLAPI（该 JSON 仍指向官方 piston-data）。</summary>
-        private static async Task<HttpResponseMessage> RewriteVersionJsonAsync(HttpResponseMessage response, string version)
-        {
-            string json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            string rewritten = System.Text.RegularExpressions.Regex.Replace(
-                json,
-                @"https://piston-data\.mojang\.com/v1/objects/[a-f0-9]+/client\.jar",
-                Bmcl + "/version/" + version + "/client");
-            response.Dispose();
-            var result = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(rewritten, System.Text.Encoding.UTF8, "application/json")
-            };
-            return result;
-        }
-
         private static Uri Map(Uri uri)
         {
             if (uri == null)
@@ -128,6 +113,16 @@ namespace RstcUpdater
                     {
                         return new Uri(Bmcl + "/version/" + name + "/json");
                     }
+                }
+
+                return null;
+            }
+
+            if (host == "piston-data.mojang.com")
+            {
+                if (path.EndsWith("/client.jar", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_lastVersion))
+                {
+                    return new Uri(Bmcl + "/version/" + _lastVersion + "/client");
                 }
 
                 return null;

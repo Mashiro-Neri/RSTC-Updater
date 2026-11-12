@@ -54,6 +54,9 @@ namespace RstcUpdater
         /// <summary>并行下载时抑制本模块自己的进度/提示输出，由调用方统一展示。</summary>
         public static bool SuppressProgress;
 
+        /// <summary>原版安装失败时请求中止后台整合包下载。</summary>
+        public static volatile bool AbortRequested;
+
         public static long LastBytes;
         public static long LastTotal;
         public static double LastSpeed;
@@ -212,6 +215,7 @@ namespace RstcUpdater
             Directory.CreateDirectory(tmpDir);
             string zipPath = Path.Combine(tmpDir, asset.Name);
 
+            AbortRequested = false;
             long freeBefore = GetFreeSpace(gameDir);
             var sw = Stopwatch.StartNew();
             await DownloadWithMirrorsAsync(asset.Url, zipPath, asset.Size, asset.Sha256).ConfigureAwait(false);
@@ -280,6 +284,11 @@ namespace RstcUpdater
                                     {
                                         throw new IOException("下载 60 秒无数据（卡死），切换下载源");
                                     }
+                                }
+
+                                if (AbortRequested)
+                                {
+                                    throw new OperationCanceledException("下载已取消");
                                 }
 
                                 if (read <= 0)
