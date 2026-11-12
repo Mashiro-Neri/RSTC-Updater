@@ -136,13 +136,13 @@ namespace RstcUpdater
             int windowHeight = SafeWindowHeight();
             lastWidth = windowWidth;
             lastHeight = windowHeight;
-            bool compact = windowHeight < 24;
+            bool compact = windowHeight < 27;
 
             Console.ResetColor();
             Console.Write(clearFirst ? "\x1b[2J\x1b[H" : "\x1b[H");
 
             int row = 0;
-            const int inner = 50;
+            const int inner = 54;
 
             WriteLine(ref row, "  ╔" + new string('═', inner) + "╗", ConsoleColor.Red);
             WriteLine(ref row, "  ║" + new string(' ', inner) + "║", ConsoleColor.Red);
@@ -167,10 +167,12 @@ namespace RstcUpdater
             WriteLine(ref row, "  ╚" + new string('═', inner) + "╝", ConsoleColor.Red);
             WriteLine(ref row, "", ConsoleColor.Gray);
 
-            // 状态：旧版主界面没有，保留一行精简信息，不破坏旧版观感
-            if (status != null && status.Count >= 2)
+            // 状态：固定 58 列画布内截断，绝不越过画布/窗口
+            if (status != null && status.Count >= 6)
             {
-                WriteLine(ref row, "  游戏目录  " + Fit(status[0].Value, Math.Max(20, Math.Min(70, windowWidth - 16))), ConsoleColor.DarkGray);
+                WriteLine(ref row, Fit("  游戏目录  " + status[0].Value, 58), ConsoleColor.DarkGray);
+                WriteLine(ref row, Fit("  实例  " + status[1].Value + "  |  整合包  " + status[2].Value, 58), ConsoleColor.DarkGray);
+                WriteLine(ref row, Fit("  远端  " + status[3].Value + "  |  " + status[4].Value + "  |  隔离  " + status[5].Value, 58), ConsoleColor.DarkGray);
             }
 
             WriteLine(ref row, "", ConsoleColor.Gray);
@@ -178,13 +180,16 @@ namespace RstcUpdater
 
             for (int i = 0; i < items.Count; i++)
             {
+                string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
+                string suffix = string.IsNullOrEmpty(desc) ? "" : "  " + desc;
+                string line = Fit((i == selected ? "  ▶ " : "    ") + items[i] + suffix, 58);
                 if (i == selected)
                 {
-                    WriteLine(ref row, "  ▶ " + items[i], ConsoleColor.White, ConsoleColor.DarkCyan);
+                    WriteLine(ref row, line, ConsoleColor.White, ConsoleColor.DarkCyan);
                 }
                 else
                 {
-                    WriteLine(ref row, "    " + items[i], ConsoleColor.Gray);
+                    WriteLine(ref row, line, ConsoleColor.Gray);
                 }
             }
 
