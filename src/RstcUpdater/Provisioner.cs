@@ -120,7 +120,7 @@ namespace RstcUpdater
         {
             try
             {
-                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(100) })
+                using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(100)))
                 {
                     http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0-provision");
                     FabricProfile fabric = null;

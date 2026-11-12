@@ -170,7 +170,7 @@ namespace RstcUpdater
 
         private static HttpClient CreateHttp()
         {
-            var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(20));
             http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0");
             string token = Environment.GetEnvironmentVariable("RSTC_GITHUB_TOKEN");
             if (!string.IsNullOrEmpty(token))

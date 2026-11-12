@@ -811,7 +811,7 @@ namespace RstcUpdater
                 return await InstallScriptedAsync(gameDir, config).ConfigureAwait(false);
             }
 
-            Ui.Step(1, 4, "选择游戏目录");
+            Ui.Step(1, 5, "选择游戏目录");
             Ui.Note("安装程序会下载原版 Minecraft 26.3（约 590 MiB）和整合包（约 580 MiB），无需预装 Minecraft。");
             string dir = ChooseInstallDir(gameDir);
             if (dir == null)
@@ -819,7 +819,7 @@ namespace RstcUpdater
                 return gameDir;
             }
 
-            Ui.Step(2, 4, "实例名");
+            Ui.Step(2, 5, "实例名");
             string name;
             while (true)
             {
@@ -845,7 +845,41 @@ namespace RstcUpdater
                 break;
             }
 
-            Ui.Step(3, 4, "整合包来源");
+            Ui.Step(3, 5, "下载设置");
+            string proxy = TextPromptInput("HTTP 代理（可留空，例 http://127.0.0.1:7890；b 返回）:", "", true);
+            if (proxy == null)
+            {
+                return gameDir;
+            }
+
+            NetworkConfig.ProxyUrl = string.IsNullOrWhiteSpace(proxy) ? null : proxy.Trim();
+            string mirrorMode = SelectPrompt("整合包下载源:", new[]
+            {
+                "自动测速（推荐）",
+                "手动选择镜像",
+                "返回菜单"
+            });
+            if (mirrorMode == null || mirrorMode == "返回菜单")
+            {
+                return gameDir;
+            }
+
+            if (mirrorMode == "手动选择镜像")
+            {
+                string mirror = SelectPrompt("选择下载源:", PackFetcher.MirrorNames);
+                if (mirror == null)
+                {
+                    return gameDir;
+                }
+
+                PackFetcher.PreferredMirror = Array.IndexOf(PackFetcher.MirrorNames, mirror);
+            }
+            else
+            {
+                PackFetcher.PreferredMirror = -1;
+            }
+
+            Ui.Step(4, 5, "整合包来源");
             string localZip = null;
             string source = SelectPrompt("请选择整合包来源:", new[]
             {
@@ -889,7 +923,7 @@ namespace RstcUpdater
                 localZip = zip;
             }
 
-            Ui.Step(4, 4, "安装确认");
+            Ui.Step(5, 5, "安装确认");
             string sourceText = localZip == null ? "在线下载最新整合包" : "本地 zip：" + Path.GetFileName(localZip);
             Ui.Card("安装确认", BuildInstallRows(dir, name, sourceText, false));
 
@@ -965,6 +999,10 @@ namespace RstcUpdater
                 ("实例名", Markup.Escape(name)),
                 ("整合包来源", Markup.Escape(sourceText)),
                 ("安装内容", "原版 26.3 + 整合包；无需预装 Minecraft"),
+                ("代理", string.IsNullOrEmpty(NetworkConfig.ProxyUrl) ? "不使用" : Markup.Escape(NetworkConfig.ProxyUrl)),
+                ("下载源", PackFetcher.PreferredMirror >= 0
+                    ? Markup.Escape(PackFetcher.MirrorNames[PackFetcher.PreferredMirror])
+                    : "自动测速"),
                 ("Java", javaOk
                     ? "[green]Java " + RequiredJava + " 已就绪[/]"
                     : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")

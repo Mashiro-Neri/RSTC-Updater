@@ -24,6 +24,8 @@ namespace RstcUpdater
                 Directory.CreateDirectory(gameDir);
             }
 
+            Ui.Step(1, 4, "准备游戏目录");
+            AnsiConsole.MarkupLine("  目标: [yellow]" + Markup.Escape(gameDir) + "[/]，实例: [yellow]" + Markup.Escape(instanceName) + "[/]");
             string instanceDir = Path.Combine(gameDir, "versions", instanceName);
             if (Directory.Exists(instanceDir))
             {
@@ -32,6 +34,7 @@ namespace RstcUpdater
             }
 
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
+            Ui.Step(2, 4, "下载原版 Minecraft " + Provisioner.TargetVersion);
             if (IsVanillaComplete(gameDir))
             {
                 AnsiConsole.MarkupLine("[grey]26.3 原版已完整，跳过下载[/]");
@@ -64,6 +67,7 @@ namespace RstcUpdater
             }
 
             // 2) 先解析并校验整合包（避免"先建实例后才发现 MC 不符"）
+            AnsiConsole.MarkupLine("[cyan]准备整合包（下载后校验 sha256 与 MC 版本）…[/]");
             string tag;
             string assetName;
             string zipPath;
@@ -133,7 +137,8 @@ namespace RstcUpdater
             }
 
             // 3) Fabric profile + 库（网络抖动时重试）
-            AnsiConsole.MarkupLine("[cyan]准备 Fabric 0.20.1…[/]");
+            Ui.Step(3, 4, "安装 Fabric " + Provisioner.FabricVersionId + " 与实例");
+            AnsiConsole.MarkupLine("[cyan]准备 Fabric " + Provisioner.FabricVersionId + "…[/]");
             FabricProfile fabric = null;
             for (int attempt = 1; attempt <= 3 && fabric == null; attempt++)
             {
@@ -161,6 +166,7 @@ namespace RstcUpdater
             Provisioner.EnsureLanguageCompatibility(gameDir, instanceName);
 
             // 5) 应用整合包
+            Ui.Step(4, 4, "应用整合包文件");
             int apply = PackApplier.Run(new PackApplier.PackOptions
             {
                 GameDir = gameDir,

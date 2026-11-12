@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,6 +33,18 @@ namespace RstcUpdater
             "https://hk.gh-proxy.com/",
             "https://gh.llkk.cc/"
         };
+
+        /// <summary>与 Mirrors 一一对应的显示名。</summary>
+        public static readonly string[] MirrorNames =
+        {
+            "GitHub 直连",
+            "gh-proxy.com",
+            "hk.gh-proxy.com",
+            "gh.llkk.cc"
+        };
+
+        /// <summary>-1 = 自动测速；>=0 = 指定 Mirrors 下标。</summary>
+        public static int PreferredMirror = -1;
 
         internal sealed class FetchOptions
         {
@@ -197,19 +210,18 @@ namespace RstcUpdater
                                    (freeBefore / 1073741824.0).ToString("F1") + " GiB）");
             return zipPath;
         }
-
         private static async Task DownloadWithMirrorsAsync(string url, string dest, long expectedSize, string expectedSha)
         {
+            List<KeyValuePair<string, string>> candidates = BuildCandidates(url);
             Exception last = null;
-            foreach (string mirror in Mirrors)
+            foreach (var candidate in candidates)
             {
-                string candidate = mirror + url;
                 string partial = dest + ".part";
                 try
                 {
                     TryDelete(partial);
-                    using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
-                    using (var response = await http.GetAsync(candidate, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+                    using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromMinutes(10)))
+                    using (var response = await http.GetAsync(candidate.Key, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
                     {
                         if (!response.IsSuccessStatusCode)
                         {
@@ -228,11 +240,11 @@ namespace RstcUpdater
                         {
                             var buffer = new byte[1048576];
                             long total = 0;
+                            var segment = Stopwatch.StartNew();
                             var lastReport = Stopwatch.StartNew();
                             int read;
                             while (true)
                             {
-                                // 读数据 60 秒没有进展就判定为卡死，换镜像重试
                                 using (var readCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(60)))
                                 {
                                     try
@@ -241,7 +253,7 @@ namespace RstcUpdater
                                     }
                                     catch (OperationCanceledException)
                                     {
-                                        throw new IOException("下载 60 秒无数据（卡死），切换镜像");
+                                        throw new IOException("下载 60 秒无数据（卡死），切换下载源");
                                     }
                                 }
 
@@ -253,16 +265,22 @@ namespace RstcUpdater
                                 output.Write(buffer, 0, read);
                                 hash.AppendData(buffer, 0, read);
                                 total += read;
-                                if (lastReport.ElapsedMilliseconds > 1000)
+                                if (lastReport.ElapsedMilliseconds > 500)
                                 {
                                     lastReport.Restart();
-                                    Console.Out.Write("\r  " + (total / 1048576.0).ToString("F1") + " / " +
-                                                      (expectedSize / 1048576.0).ToString("F1") + " MiB");
-                                    Console.Out.Flush();
+                                    RenderPackProgress(candidate.Value, total, expectedSize, segment.Elapsed);
                                 }
                             }
 
-                            Console.Out.Write("\r");
+                            Console.Out.Write("\r" + new string(' ', Math.Max(20, SafeWidth() - 2)) + "\r");
+                            Console.Out.Flush();
+                            long elapsedMs = Math.Max(1, segment.ElapsedMilliseconds);
+                            double mibPerSecond = total / 1048576.0 / (elapsedMs / 1000.0);
+                            AnsiConsole.MarkupLine("[green]下载完成[/] " + Markup.Escape(candidate.Value) + "，" +
+                                                   (total / 1048576.0).ToString("F1") + " MiB，" +
+                                                   TimeSpan.FromMilliseconds(elapsedMs).ToString("mm\\:ss") + "，" +
+                                                   mibPerSecond.ToString("F1") + " MiB/s");
+
                             string actual = ToHex(hash.GetHashAndReset());
                             if (!string.Equals(actual, expectedSha, StringComparison.OrdinalIgnoreCase))
                             {
@@ -287,12 +305,126 @@ namespace RstcUpdater
                 catch (Exception ex)
                 {
                     last = ex;
-                    Console.Error.WriteLine("镜像失败（" + (mirror.Length == 0 ? "直连" : mirror) + "）: " + ex.Message);
+                    Console.Error.WriteLine("下载源失败（" + candidate.Value + "）: " + ex.Message);
                     TryDelete(partial);
                 }
             }
 
-            throw new IOException("所有镜像均失败", last);
+            throw new IOException("所有下载源均失败", last);
+        }
+
+        /// <summary>构造候选下载源；自动模式下先测速再排序。</summary>
+        private static List<KeyValuePair<string, string>> BuildCandidates(string url)
+        {
+            var all = new List<KeyValuePair<string, string>>();
+            for (int i = 0; i < Mirrors.Length; i++)
+            {
+                all.Add(new KeyValuePair<string, string>(Mirrors[i] + url, MirrorNames[i]));
+            }
+
+            if (PreferredMirror >= 0 && PreferredMirror < all.Count)
+            {
+                AnsiConsole.MarkupLine("[cyan]下载源[/] " + Markup.Escape(all[PreferredMirror].Value) + "（手动选择）");
+                return new List<KeyValuePair<string, string>> { all[PreferredMirror] };
+            }
+
+            var measured = new List<(KeyValuePair<string, string> Candidate, double Speed)>();
+            foreach (var candidate in all)
+            {
+                double speed = ProbeSpeed(candidate.Key);
+                measured.Add((candidate, speed));
+            }
+
+            string report = string.Join(" · ", measured.Select(m =>
+                m.Candidate.Value + " " + (m.Speed > 0 ? m.Speed.ToString("F1") + " MiB/s" : "失败")));
+            AnsiConsole.MarkupLine("[grey]测速：[/]" + Markup.Escape(report));
+
+            var ordered = measured
+                .OrderByDescending(m => m.Speed)
+                .Select(m => m.Candidate)
+                .ToList();
+            double best = measured.Max(m => m.Speed);
+            AnsiConsole.MarkupLine("[cyan]下载源[/] 自动测速选择 " + Markup.Escape(ordered[0].Value) +
+                                   (best > 0 ? "（" + best.ToString("F1") + " MiB/s）" : "（测速失败，按顺序尝试）"));
+            return ordered;
+        }
+
+        /// <summary>测速：读取前 256 KiB，返回 MiB/s；失败返回 -1。</summary>
+        private static double ProbeSpeed(string url)
+        {
+            try
+            {
+                using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(8)))
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Range = new RangeHeaderValue(0, 262143);
+                    var watch = Stopwatch.StartNew();
+                    using (var response = http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                        .GetAwaiter().GetResult())
+                    {
+                        if (!response.IsSuccessStatusCode && (int)response.StatusCode != 206)
+                        {
+                            return -1;
+                        }
+
+                        using (var stream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                        {
+                            var buffer = new byte[262144];
+                            int read = stream.ReadAsync(buffer, 0, buffer.Length).GetAwaiter().GetResult();
+                            watch.Stop();
+                            if (read <= 0 || watch.ElapsedMilliseconds <= 0)
+                            {
+                                return -1;
+                            }
+
+                            return read / 1048576.0 / (watch.ElapsedMilliseconds / 1000.0);
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return -1;
+            }
+        }
+
+        private static void RenderPackProgress(string source, long done, long total, TimeSpan elapsed)
+        {
+            double speed = elapsed.TotalSeconds > 0 ? done / 1048576.0 / elapsed.TotalSeconds : 0;
+            int percent = total > 0 ? (int)Math.Min(100, done * 100L / total) : 0;
+            const int barWidth = 24;
+            int filled = Math.Max(0, Math.Min(barWidth, percent * barWidth / 100));
+            string bar = new string('#', filled) + new string('-', barWidth - filled);
+            string eta = "--:--";
+            if (speed > 0.05 && total > done)
+            {
+                int seconds = (int)Math.Min(359999, (total - done) / 1048576.0 / speed);
+                eta = TimeSpan.FromSeconds(seconds).ToString("mm\\:ss");
+            }
+
+            string line = string.Format(
+                "\r  [{0}] {1,3}%  {2:F1}/{3:F1} MB  {4:F1} MB/s  剩余 {5}  {6}   ",
+                bar, percent, done / 1048576.0, total / 1048576.0, speed, eta, source);
+            int width = SafeWidth();
+            if (width > 20 && line.Length > width - 1)
+            {
+                line = line.Substring(0, width - 2);
+            }
+
+            Console.Out.Write(line);
+            Console.Out.Flush();
+        }
+
+        private static int SafeWidth()
+        {
+            try
+            {
+                return Console.WindowWidth > 20 ? Console.WindowWidth : 0;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         private static void TryDelete(string path)

@@ -155,7 +155,7 @@ namespace RstcUpdater
             string manifest;
             try
             {
-                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) })
+                using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(60)))
                 {
                     http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0-probe");
                     manifest = await http.GetStringAsync(options.ManifestUrl).ConfigureAwait(false);
@@ -195,7 +195,7 @@ namespace RstcUpdater
                 string versionJson;
                 try
                 {
-                    using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) })
+                    using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(60)))
                     {
                         http.DefaultRequestHeaders.UserAgent.ParseAdd("RSTC-Updater/5.0-probe");
                         versionJson = await http.GetStringAsync(versionUrl).ConfigureAwait(false);
@@ -293,7 +293,7 @@ namespace RstcUpdater
             var lastReport = Stopwatch.StartNew();
             var sync = new object();
 
-            using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(100) })
+            using (var http = NetworkConfig.CreateHttpClient(TimeSpan.FromSeconds(100)))
             using (var cts = new CancellationTokenSource())
             {
                 Console.CancelKeyPress += (s, e) =>
@@ -364,9 +364,13 @@ namespace RstcUpdater
 
             stopwatch.Stop();
             long afterBytes = GetDirectorySize(gameDir);
+            double averageSpeed = stopwatch.Elapsed.TotalSeconds > 0
+                ? (afterBytes - beforeBytes) / 1048576.0 / stopwatch.Elapsed.TotalSeconds
+                : 0;
             AnsiConsole.MarkupLine("");
-            AnsiConsole.MarkupLine("[green]安装完成[/] 耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
-                                   "，本次新增 " + ((afterBytes - beforeBytes) / 1048576.0).ToString("F1") +
+            AnsiConsole.MarkupLine("[green]原版下载完成[/] 耗时 " + stopwatch.Elapsed.ToString("hh\\:mm\\:ss") +
+                                   "，平均 " + averageSpeed.ToString("F1") + " MiB/s，本次新增 " +
+                                   ((afterBytes - beforeBytes) / 1048576.0).ToString("F1") +
                                    " MiB（目录总量 " + (afterBytes / 1048576.0).ToString("F1") + " MiB）");
 
             return VerifyInstall(gameDir);
@@ -420,12 +424,42 @@ namespace RstcUpdater
         private static void RenderInstallProgress(int files, int totalFiles, long bytes, long totalBytes, TimeSpan elapsed)
         {
             double speed = elapsed.TotalSeconds > 0 ? bytes / 1048576.0 / elapsed.TotalSeconds : 0;
+            int percent = totalBytes > 0 ? (int)Math.Min(100, bytes * 100L / totalBytes) : 0;
+            const int barWidth = 24;
+            int filled = Math.Max(0, Math.Min(barWidth, percent * barWidth / 100));
+            string bar = new string('#', filled) + new string('-', barWidth - filled);
+            string eta = "--:--";
+            if (speed > 0.05 && totalBytes > bytes)
+            {
+                int seconds = (int)Math.Min(359999, (totalBytes - bytes) / 1048576.0 / speed);
+                eta = TimeSpan.FromSeconds(seconds).ToString("mm\\:ss");
+            }
+
             string line = string.Format(
-                "\r  [{0:hh\\:mm\\:ss}] 文件 {1}/{2}   {3:F1}/{4:F1} MB   {5:F1} MB/s   ",
-                elapsed, files, totalFiles, bytes / 1048576.0, totalBytes / 1048576.0, speed);
+                "\r  [{0}] {1,3}%  {2:F1}/{3:F1} MB  {4:F1} MB/s  剩余 {5}  文件 {6}/{7}   ",
+                bar, percent, bytes / 1048576.0, totalBytes / 1048576.0, speed, eta, files, totalFiles);
+            int width = SafeConsoleWidth();
+            if (width > 20 && line.Length > width - 1)
+            {
+                line = line.Substring(0, width - 2);
+            }
+
             Console.Out.Write(line);
             Console.Out.Flush();
         }
+
+        private static int SafeConsoleWidth()
+        {
+            try
+            {
+                return Console.WindowWidth > 20 ? Console.WindowWidth : 0;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
 
         private static int VerifyInstall(string gameDir)
         {
