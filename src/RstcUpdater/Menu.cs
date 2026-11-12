@@ -812,6 +812,7 @@ namespace RstcUpdater
             }
 
             Ui.Step(1, 4, "选择游戏目录");
+            Ui.Note("安装程序会下载原版 Minecraft 26.3（约 590 MiB）和整合包（约 580 MiB），无需预装 Minecraft。");
             string dir = ChooseInstallDir(gameDir);
             if (dir == null)
             {
@@ -963,7 +964,7 @@ namespace RstcUpdater
                 ("游戏目录", Markup.Escape(dir)),
                 ("实例名", Markup.Escape(name)),
                 ("整合包来源", Markup.Escape(sourceText)),
-                ("预计下载", estimate),
+                ("安装内容", "原版 26.3 + 整合包；无需预装 Minecraft"),
                 ("Java", javaOk
                     ? "[green]Java " + RequiredJava + " 已就绪[/]"
                     : "[yellow]未检测到 Java " + RequiredJava + "（安装可继续，启动前需自行安装）[/]")
@@ -983,7 +984,7 @@ namespace RstcUpdater
             return dir;
         }
 
-        /// <summary>交互式选择安装目录：可使用当前目录、手动输入，Esc/B 返回。</summary>
+        /// <summary>交互式选择安装目录；新目录会问“直接使用，还是在其下新建 .minecraft”。Esc/B 返回。</summary>
         private static string ChooseInstallDir(string current)
         {
             while (true)
@@ -991,50 +992,45 @@ namespace RstcUpdater
                 var options = new List<string>();
                 if (!string.IsNullOrEmpty(current))
                 {
-                    options.Add("使用当前目录：" + current);
+                    options.Add("使用已检测到的 .minecraft：" + current);
                 }
 
                 options.Add("浏览文件夹（Windows 选择器）");
-                options.Add("手动输入 .minecraft 目录");
+                options.Add("手动输入目录路径");
                 options.Add("返回菜单");
 
-                string choice = SelectPrompt("选择游戏目录:", options);
+                string choice = SelectPrompt("选择游戏目录（.minecraft）:", options);
                 if (choice == null || choice == "返回菜单")
                 {
                     return null;
                 }
 
-                string path;
-                if (choice.StartsWith("使用当前目录"))
+                string picked;
+                if (choice.StartsWith("使用已检测"))
                 {
-                    path = current;
+                    picked = current;
                 }
-                else if (choice.StartsWith("浏览文件夹"))
+                else if (choice.StartsWith("浏览"))
                 {
-                    path = NativePicker.PickFolder(current);
-                    if (string.IsNullOrEmpty(path))
-                    {
-                        continue;
-                    }
+                    picked = NativePicker.PickFolder(current);
                 }
                 else
                 {
-                    path = TextPromptInput("输入 .minecraft 目录路径（b 返回）:", "", true);
-                    if (path == null)
+                    picked = TextPromptInput("输入目录路径（b 返回）:", "", true);
+                    if (picked == null)
                     {
                         continue;
                     }
+                }
 
-                    path = path.Trim();
-                    if (path.Length == 0)
-                    {
-                        continue;
-                    }
+                if (string.IsNullOrWhiteSpace(picked))
+                {
+                    continue;
                 }
 
                 try
                 {
-                    path = Path.GetFullPath(path.Trim().Trim('"'));
+                    picked = Path.GetFullPath(picked.Trim().Trim('"')).TrimEnd('\\');
                 }
                 catch (Exception)
                 {
@@ -1042,22 +1038,50 @@ namespace RstcUpdater
                     continue;
                 }
 
-                if (!Directory.Exists(path))
+                string finalPath = picked;
+                string leaf = Path.GetFileName(picked);
+                if (!string.Equals(leaf, ".minecraft", StringComparison.OrdinalIgnoreCase))
                 {
-                    Ui.Note("目录不存在：" + path, true);
+                    string mode = SelectPrompt("目录：" + picked, new[]
+                    {
+                        "在该目录下新建 .minecraft（推荐）",
+                        "直接使用该目录作为 .minecraft",
+                        "返回"
+                    });
+                    if (mode == null || mode == "返回")
+                    {
+                        continue;
+                    }
+
+                    if (mode.StartsWith("在该目录下"))
+                    {
+                        finalPath = Path.Combine(picked, ".minecraft");
+                    }
+                }
+
+                if (!Directory.Exists(finalPath))
+                {
+                    if (!ConfirmPrompt("目录还不存在，安装时创建：" + finalPath + "？", true))
+                    {
+                        continue;
+                    }
+
+                    return finalPath;
+                }
+
+                bool isEmpty = !Directory.EnumerateFileSystemEntries(finalPath).Any();
+                bool looksLikeMc = Directory.Exists(Path.Combine(finalPath, "versions")) ||
+                                   File.Exists(Path.Combine(finalPath, "options.txt"));
+                if (!isEmpty && !looksLikeMc &&
+                    !ConfirmPrompt("该目录非空且不是 .minecraft，安装会写入客户端文件，继续？", false))
+                {
                     continue;
                 }
 
-                bool looksLikeMc = Directory.Exists(Path.Combine(path, "versions")) ||
-                                   File.Exists(Path.Combine(path, "options.txt"));
-                if (!looksLikeMc && !ConfirmPrompt("该目录不像 .minecraft（缺少 versions/ 与 options.txt），仍要使用？", false))
-                {
-                    continue;
-                }
-
-                return path;
+                return finalPath;
             }
         }
+
         private static void HandleUnfinishedJournals(string gameDir)
         {
             if (string.IsNullOrEmpty(gameDir) || !Directory.Exists(gameDir))
