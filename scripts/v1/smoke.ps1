@@ -55,6 +55,9 @@ $c1 = Run-Case @('--install-v1', $game, '--instance', $instance, '--zip', $PackV
 Check '安装（26.3 夹具包）' ($c1.Code -eq 0 -and $c1.Output -match 'PACK_APPLY=PASS') "exit=$($c1.Code)"
 Check '实例 json 存在' (Test-Path -LiteralPath (Join-Path $instanceDir "$instance.json"))
 Check '实例 jar 存在（A2）' (Test-Path -LiteralPath (Join-Path $instanceDir "$instance.jar"))
+$smokeJson = Get-Content -LiteralPath (Join-Path $instanceDir "$instance.json") -Raw -Encoding utf8 | ConvertFrom-Json
+Check '实例 json clientVersion=26.3' ($smokeJson.clientVersion -eq '26.3') "clientVersion=$($smokeJson.clientVersion)"
+Check '实例有 saves 目录' (Test-Path -LiteralPath (Join-Path $instanceDir 'saves'))
 Check '启动器配置存在' ((Test-Path -LiteralPath (Join-Path $instanceDir 'PCL\Setup.ini')) -and (Test-Path -LiteralPath (Join-Path $instanceDir 'hmclversion.cfg')))
 $c1.Output | Out-File -FilePath (Join-Path $dir '1-install.txt') -Encoding utf8
 

@@ -37,7 +37,7 @@
 
 ## v5（开发中）
 
-`src/RstcUpdater/` 是 C# 控制台重写版（.NET Framework 4.8）。**V1 实现完成，经 5 轮独立审查 PASS（`evidence/v1/review/`），A1b 双启动器实测已通过（PCL2/HMCL × A2/A1/B 全 ok，`evidence/acceptance/20261112_193644/a1b/`），对外状态 `demo-awaiting-user`**：真实 6.0/v5 Release 路径待发布后实测；阶段 0 的 0-6 为 PARTIAL（并行未量化）、0-7 待 v5 Release。
+`src/RstcUpdater/` 是 C# 控制台重写版（.NET Framework 4.8）。**V1 实现完成，经 11 轮独立审查 PASS（`evidence/v1/review/`，最终 `20261112_2225`），代码冻结 `11a4a19`；A1b 双启动器与 PCL2 中文启动均已实测（`evidence/acceptance/`），对外状态 `demo-awaiting-user`**：真实 6.0/v5 Release 路径待发布后实测；阶段 0 的 0-6 为 PARTIAL（并行未量化）、0-7 待 v5 Release。
 
 ```powershell
 dotnet build src\RstcUpdater\RstcUpdater.csproj -c Release   # 需要 .NET SDK 8；net48 引用程序集由 NuGet 提供

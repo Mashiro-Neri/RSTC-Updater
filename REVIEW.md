@@ -88,3 +88,10 @@ rollback dry-run： 阶段 0 为 N/A（只写临时目录）
 - 之前 `State:9` 预写 Setup.ini 的方案**未被证实有效**（用户实测仍英文），根因在 PCL `GetVanillaName` 的 `jar` 优先级。
 - 修复：实例 json `clientVersion=26.3` + 空 `saves` 目录 + 更新时自动补（备份 `.rstc-bak`）；用户实测中文。
 - 代码 commit 见 git log；需第 11 轮复审确认无回归后冻结。
+
+## 13. 第 11 轮复审收尾（2026-11-12，冻结 11a4a19）
+
+- R11-1（LOW，docs）：根因文案按 PCL 源码更正为“0.0.0/无可识别版本”（A2 先命中 fabric intermediary 0.0.0），非“jar 优先”。已改开发文档更正段。
+- R11-2（LOW，test gap）：新增 `scripts/v1/language-smoke.ps1`（新装 clientVersion/saves、删字段强制更新补回+备份、二次幂等）与 `smoke.ps1` 两条断言（实例 json clientVersion=26.3、saves 目录）。
+- NIT（保留）：`--fetch-pack`/`--pack` 两个阶段 0 CLI 未接 Ensure（内部遗留，不影响玩家路径）；`.rstc-bak` 在只读 json 场景可能继承只读属性，需人工清属性后重试；README/交付说明轮次与基线已更正。
+- 冻结：V1 代码基线 `11a4a19`；此后 test/docs-only 变更不改变代码基线。
