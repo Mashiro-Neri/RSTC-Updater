@@ -65,7 +65,7 @@ namespace RstcUpdater
 
             // 1) 原版 26.3（完整性判定 + 最多 3 次；CmlLib 会复用已下载文件，相当于断点续跑）
             Ui.Phase("下载原版 Minecraft " + Provisioner.TargetVersion);
-            MultiProgress.Requested = packTask != null;
+            ProgressLine.ParallelRequested = packTask != null;
             if (IsVanillaComplete(gameDir))
             {
                 AnsiConsole.MarkupLine("[grey]26.3 原版已完整，跳过下载[/]");
@@ -100,11 +100,10 @@ namespace RstcUpdater
             // 2) 整合包：在线时已在后台并行下载，这里等待/校验；本地 zip 直接读元数据
             if (packTask != null)
             {
-                if (!MultiProgress.Active)
+                if (!ProgressLine.Parallel)
                 {
-                    MultiProgress.Requested = false;
-                    MultiProgress.Begin();
-                    MultiProgress.SetVanillaFinished("原版已就绪，跳过下载");
+                    ProgressLine.BeginParallel();
+                    ProgressLine.SetParallelVanillaSummary("原版已就绪，跳过下载");
                 }
 
                 try
@@ -115,17 +114,17 @@ namespace RstcUpdater
                 catch (Exception ex)
                 {
                     PackFetcher.SuppressProgress = false;
-                    MultiProgress.Abort();
+                    ProgressLine.AbortParallel();
                     Console.Error.WriteLine("整合包后台下载失败: " + ex.GetType().Name + ": " + ex.Message);
                     return 5;
                 }
 
-                if (MultiProgress.Active)
+                if (ProgressLine.Parallel && !string.IsNullOrEmpty(PackFetcher.LastSummary))
                 {
-                    MultiProgress.SetPackFinished(PackFetcher.LastSummary ?? "整合包下载完成");
+                    ProgressLine.SetParallelPackSummary(PackFetcher.LastSummary);
                 }
 
-                MultiProgress.End();
+                ProgressLine.FinishParallel();
                 downloaded = true;
                 assetName = packAsset.Name;
                 tag = packAsset.Tag;
@@ -262,7 +261,7 @@ namespace RstcUpdater
         {
             while (!task.IsCompleted)
             {
-                if (!MultiProgress.Active)
+                if (!ProgressLine.Parallel)
                 {
                     ProgressLine.Draw("下载整合包", PackFetcher.LastBytes, PackFetcher.LastTotal,
                         PackFetcher.LastSpeed, "并行下载中");

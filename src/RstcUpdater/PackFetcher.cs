@@ -228,9 +228,9 @@ namespace RstcUpdater
             string summary = "整合包下载完成  用时 " + sw.Elapsed.ToString("hh\\:mm\\:ss") + "  " +
                              speed.ToString("F1") + " MiB/s  剩余空间 " + (freeAfter / 1073741824.0).ToString("F1") + " GiB";
             LastSummary = summary;
-            if (MultiProgress.Active)
+            if (ProgressLine.Parallel)
             {
-                MultiProgress.SetPackFinished(summary);
+                ProgressLine.SetParallelPackSummary(summary);
             }
             else if (!SuppressProgress)
             {
@@ -480,9 +480,9 @@ namespace RstcUpdater
             LastBytes = done;
             LastTotal = total;
             LastSpeed = speed;
-            if (MultiProgress.Active)
+            if (ProgressLine.Parallel)
             {
-                MultiProgress.UpdatePack(done, total, speed);
+                ProgressLine.UpdateParallelPack(done, total, speed);
                 return;
             }
 
