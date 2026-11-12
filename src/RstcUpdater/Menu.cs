@@ -1094,6 +1094,7 @@ namespace RstcUpdater
                 return;
             }
 
+            Ui.Step(1, 3, "选择更新实例");
             string instance = ResolveInstance(gameDir, config, "选择要更新的实例:");
             if (string.IsNullOrEmpty(instance))
             {
@@ -1104,6 +1105,7 @@ namespace RstcUpdater
             config.LastInstance = instance;
             config.Save();
 
+            Ui.Step(2, 3, "检查更新");
             UpdateCheck check = await UpdaterFlow.CheckAsync(gameDir, instance).ConfigureAwait(false);
             Ui.Card("更新检查", new[]
             {
@@ -1145,6 +1147,7 @@ namespace RstcUpdater
                 return;
             }
 
+            Ui.Step(3, 3, "确认并执行");
             var keep = new List<string>();
             if (prepared.Plan.Deletes.Count > 0)
             {
@@ -1188,6 +1191,7 @@ namespace RstcUpdater
                 return;
             }
 
+            Ui.Step(1, 3, "选择迁移目标");
             string target = ResolveInstance(gameDir, config, "选择迁移目标实例:");
             if (string.IsNullOrEmpty(target))
             {
@@ -1203,11 +1207,13 @@ namespace RstcUpdater
                 return;
             }
 
+            Ui.Step(2, 3, "选择旧实例");
             string from = SelectPrompt("选择要迁移的旧实例:", sources);
             if (from == null)
             {
                 return;
             }
+            Ui.Step(3, 3, "选择类别并确认");
             var categoryNames = Migration.Categories.Select(c => c.Name).ToList();
             var chosenNames = MultiPrompt("选择要迁移的类别（类别内全选）:", categoryNames);
             var chosen = Migration.Categories.Where(c => chosenNames.Contains(c.Name)).ToList();
@@ -1225,8 +1231,15 @@ namespace RstcUpdater
                                        " 个同名文件；确认后会先备份这些文件到 rstc-backup/migrate_* 再覆盖。[/]");
             }
 
-            if (!ConfirmPrompt("将从 " + from + " 复制约 " + (estimate / 1048576.0).ToString("F1") +
-                               " MiB 到 " + target + "（源不动），继续？", true))
+            Ui.Card("迁移确认", new[]
+            {
+                ("源实例", Markup.Escape(from)),
+                ("目标实例", Markup.Escape(target)),
+                ("类别", Markup.Escape(string.Join("、", chosen.Select(c => c.Name)))),
+                ("预计大小", (estimate / 1048576.0).ToString("F1") + " MiB"),
+                ("冲突文件", conflicts > 0 ? "[yellow]" + conflicts + " 个（覆盖前自动备份）[/]" : "无")
+            });
+            if (!ConfirmPrompt("开始迁移？（源实例不动）", true))
             {
                 return;
             }
@@ -1325,18 +1338,12 @@ namespace RstcUpdater
 
         private static string Settings(AppConfig config, string currentGameDir)
         {
-            string input = TextPromptInput("游戏目录（留空保持不变）:", currentGameDir ?? "", true);
-            if (input == null)
+            string full = ChooseInstallDir(currentGameDir);
+            if (full == null || string.Equals(full, currentGameDir, StringComparison.OrdinalIgnoreCase))
             {
                 return currentGameDir;
             }
 
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return currentGameDir;
-            }
-
-            string full = Path.GetFullPath(input.Trim().Trim('"'));
             config.LastGameDir = full;
             config.Save();
             AnsiConsole.MarkupLine("[green]已保存[/] " + Markup.Escape(full));
