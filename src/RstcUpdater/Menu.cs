@@ -562,6 +562,11 @@ namespace RstcUpdater
                         PackApplier.Rollback(gameDir, instance);
                     }
                 }
+                catch (FlowFailureException)
+                {
+                    // 脚本输入错误/耗尽必须上抛，不能被吞掉导致后续输入错位
+                    throw;
+                }
                 catch (Exception)
                 {
                 }

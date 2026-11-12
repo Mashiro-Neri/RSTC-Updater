@@ -36,6 +36,23 @@ foreach ($name in @($instance, $source)) {
     if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
 }
 
+# 清理测试目录里其他测试残留的未完成 journal（否则菜单启动会先弹回滚提示，吃掉脚本输入）
+$versionsRoot = Join-Path $game 'versions'
+if (Test-Path -LiteralPath $versionsRoot) {
+    foreach ($journal in Get-ChildItem -LiteralPath $versionsRoot -Recurse -Filter '.rstc-journal.json' -File -ErrorAction SilentlyContinue) {
+        try {
+            $status = (Get-Content -LiteralPath $journal.FullName -Raw -Encoding utf8 | ConvertFrom-Json).status
+        }
+        catch { $status = '' }
+        if ($status -in @('writing', 'failed')) {
+            # journal 位于 versions\<实例>\.rstc-journal.json，其目录就是实例目录
+            $leftoverDir = $journal.DirectoryName
+            Remove-Item -LiteralPath $leftoverDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "[cleanup] 移除测试残留实例 $(Split-Path -Leaf $leftoverDir)（journal=$status）"
+        }
+    }
+}
+
 # 迁移源：1 个存档
 $srcDir = Join-Path $game "versions\$source"
 New-Item -ItemType Directory -Force (Join-Path $srcDir 'saves') | Out-Null
