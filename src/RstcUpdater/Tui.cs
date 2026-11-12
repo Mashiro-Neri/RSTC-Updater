@@ -7,8 +7,9 @@ using System.Threading;
 namespace RstcUpdater
 {
     /// <summary>
-    /// 真正的终端 TUI：全屏布局 + 方向键菜单 + 缩放重绘。
-    /// 颜色走 ConsoleColor（暗红，接近 v4.11 观感），VT 只用于光标定位/清屏，避免颜色码在不同终端下的差异。
+    /// 终端 TUI：致敬 v4.11 的红色边框风格（黑色底、亮红 RST 标志与细边框），方向键菜单。
+    /// 颜色用 ConsoleColor（Red 对应 #E74856，和旧版一致的亮红），VT 只负责光标/清屏。
+    /// 每帧整屏重绘并监听窗口尺寸变化，缩放/拖动后自动恢复排版。
     /// </summary>
     internal static class Tui
     {
@@ -94,7 +95,6 @@ namespace RstcUpdater
             return line;
         }
 
-        /// <summary>方向键菜单主循环。返回选中下标；Esc/Ctrl+C 返回 -1。</summary>
         public static int Menu(
             IReadOnlyList<string> items,
             IReadOnlyList<string> descriptions,
@@ -169,32 +169,35 @@ namespace RstcUpdater
             lastWidth = windowWidth;
             lastHeight = windowHeight;
             int width = Math.Max(40, Math.Min(96, windowWidth - 1));
-            bool full = windowHeight >= 27;
+            bool full = windowHeight >= 30;
 
             var lines = new List<Line>();
+            string inner = new string('─', width - 2);
+
+            lines.Add(One(Text("┌" + inner + "┐", ConsoleColor.Red)));
 
             string left = " RSTC // UPDATER";
             string right = version + " · " + channel + " ";
-            int gap = Math.Max(1, width - DisplayWidth(left) - DisplayWidth(right));
-            lines.Add(One(Filled(left + new string(' ', gap) + right, ConsoleColor.White, ConsoleColor.DarkRed)));
-            lines.Add(One(Text("", ConsoleColor.Gray)));
+            string header = Pad(left + new string(' ', Math.Max(1, width - 2 - DisplayWidth(left) - DisplayWidth(right))) + right, width - 2);
+            lines.Add(One(Text("│", ConsoleColor.Red), Text(header, ConsoleColor.White), Text("│", ConsoleColor.Red)));
 
             if (full)
             {
+                lines.Add(One(Text("│" + new string(' ', width - 2) + "│", ConsoleColor.Red)));
                 foreach (string logo in Logo)
                 {
-                    lines.Add(One(Text(Center(logo, width), ConsoleColor.DarkRed)));
+                    lines.Add(One(Text("│", ConsoleColor.Red), Text(Center(logo, width - 2), ConsoleColor.Red), Text("│", ConsoleColor.Red)));
                 }
 
-                lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.White)));
-                lines.Add(One(Text(Center("Minecraft 26.3 · Fabric 0.20.1", width), ConsoleColor.DarkGray)));
+                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("红石镇客户端更新器", width - 2), ConsoleColor.White), Text("│", ConsoleColor.Red)));
+                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("Minecraft 26.3 · Fabric 0.20.1", width - 2), ConsoleColor.DarkGray), Text("│", ConsoleColor.Red)));
             }
             else
             {
-                lines.Add(One(Text(Center("红石镇客户端更新器  ·  Minecraft 26.3", width), ConsoleColor.White)));
+                lines.Add(One(Text("│", ConsoleColor.Red), Text(Center("红石镇客户端更新器  ·  Minecraft 26.3", width - 2), ConsoleColor.White), Text("│", ConsoleColor.Red)));
             }
 
-            lines.Add(One(Text(new string('─', width), ConsoleColor.DarkRed)));
+            lines.Add(One(Text("└" + inner + "┘", ConsoleColor.Red)));
             lines.Add(One(Text("", ConsoleColor.Gray)));
 
             foreach (var row in status)
@@ -208,7 +211,7 @@ namespace RstcUpdater
             }
 
             lines.Add(One(Text("", ConsoleColor.Gray)));
-            lines.Add(One(Text("操作", ConsoleColor.DarkRed)));
+            lines.Add(One(Text("操作", ConsoleColor.Red)));
             for (int i = 0; i < items.Count; i++)
             {
                 string desc = descriptions != null && i < descriptions.Count ? descriptions[i] : "";
