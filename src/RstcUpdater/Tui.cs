@@ -192,7 +192,7 @@ namespace RstcUpdater
             }
 
             lines.Add(One(Text("+" + inner + "+", ConsoleColor.Red)));
-            lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.White)));
+            lines.Add(One(Text(Center("红石镇客户端更新器", width), ConsoleColor.Red)));
             lines.Add(One(Text(Center("Minecraft 26.3 | Fabric 0.20.1", width), ConsoleColor.DarkGray)));
             lines.Add(One(Text("", ConsoleColor.Gray)));
 
@@ -295,66 +295,14 @@ namespace RstcUpdater
             }
         }
 
-        private static readonly string[][] Letters =
+        private static readonly string[] Logo =
         {
-            new[]
-            {
-                "#####",
-                "#   #",
-                "#####",
-                "#  # ",
-                "#   #"
-            },
-            new[]
-            {
-                " ####",
-                "#    ",
-                " ####",
-                "    #",
-                "#### "
-            },
-            new[]
-            {
-                "#######",
-                "   #   ",
-                "   #   ",
-                "   #   ",
-                "   #   "
-            }
+            "██████   ██████  ████████",
+            "██   ██ ██          ██   ",
+            "██████  ██████      ██   ",
+            "██  ██        ██    ██   ",
+            "██   ██ ██████      ██   "
         };
-
-        private static readonly string[] Logo = BuildLogo();
-
-        private static string[] BuildLogo()
-        {
-            var rows = new List<string>();
-            int width = Letters.Max(l => l.Max(r => r.Length));
-            for (int row = 0; row < 5; row++)
-            {
-                var parts = Letters.Select(l => l[row].PadRight(width)).ToArray();
-                string combined = string.Join("  ", parts);
-                var scaled = new StringBuilder();
-                foreach (char c in combined)
-                {
-                    scaled.Append(c == '#' ? "##" : "  ");
-                }
-
-                rows.Add(scaled.ToString());
-            }
-
-            return rows.ToArray();
-        }
-
-        private static string ScaleLogo(string line)
-        {
-            var builder = new StringBuilder();
-            foreach (char c in line)
-            {
-                builder.Append(c == '#' ? "##" : "  ");
-            }
-
-            return builder.ToString();
-        }
 
         private static string Center(string text, int width)
         {
